@@ -1,0 +1,7 @@
+#!/bin/bash
+source /usr/lib/openfoam/openfoam2406/etc/bashrc
+set -e
+blockMesh > log.blockMesh 2>&1
+snappyHexMesh -overwrite > log.snappy 2>&1
+potentialFoam -writep > log.potential 2>&1 || true
+simpleFoam > log.simpleFoam 2>&1

@@ -1,0 +1,28 @@
+FoamFile { version 2.0; format ascii; class dictionary; object snappyHexMeshDict; }
+castellatedMesh true; snap true; addLayers true;
+geometry { wing.stl { type triSurfaceMesh; file "wing.stl"; } }
+castellatedMeshControls {
+ maxLocalCells 500000; maxGlobalCells 800000; minRefinementCells 10;
+ maxLoadUnbalance 0.1; nCellsBetweenLevels 3;
+ features ();
+ refinementSurfaces { wing.stl { level (3 4); patchInfo { type wall; } } }
+ resolveFeatureAngle 25;
+ refinementRegions { wing.stl { mode distance; levels ((0.5 3) (1.0 2)); } }
+ locationInMesh (2.5 6.0 0.0);
+ allowFreeStandingZoneFaces true;
+}
+snapControls { nSmoothPatch 3; tolerance 2.0; nSolveIter 30; nRelaxIter 5; }
+addLayersControls {
+ relativeSizes true; layers { "wing.stl" { nSurfaceLayers 3; } }
+ expansionRatio 1.2; finalLayerThickness 0.5; minThickness 0.1;
+ nGrow 0; featureAngle 60; slipFeatureAngle 30;
+ nRelaxIter 3; nSmoothSurfaceNormals 1; nSmoothNormals 3;
+ nSmoothThickness 10; maxFaceThicknessRatio 0.5; maxThicknessToMedialRatio 0.3;
+ minMedianAxisAngle 90; nBufferCellsNoExtrude 0; nLayerIter 50;
+}
+meshQualityControls {
+ #include "meshQualityDict"
+ nSmoothScale 4; errorReduction 0.75;
+}
+writeFlags (scalarLevels layerSets voronoi);
+mergeTolerance 1e-6;
