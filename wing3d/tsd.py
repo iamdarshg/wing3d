@@ -25,26 +25,37 @@ def make_grid(chord=1.0, span=6.0, nx=100, ny=40, nz=40,
               xlim=(-8, 10), ylim=(-7, 7), zlim=(-7, 7)):
     # dense uniform core around wing/chord, geometric stretch to farfield;
     # extra cosine clustering at LE/TE inside the core via remap
-    def core(n, lo, hi, f0, f1, frac=0.6, le_cluster=True):
+    def core(n, lo, hi, f0, f1, frac=0.6, le_cluster=True,
+             center_cluster=False):
         nc = max(8, int(n * frac))
         u = np.linspace(0, 1, nc)
-        if le_cluster:
+        if center_cluster:
+            # dense at core CENTER (wing/wake plane), sparse at ends:
+            # sine remap, slope (1+A*cos(2*pi*u)): A>0 dips at center
+            A = 0.75
+            u = u + A * np.sin(2 * np.pi * u) / (2 * np.pi)
+        elif le_cluster:
             # cosine clustering toward both ends of core (LE/TE emphasis)
             u = 0.5 * (1 - np.cos(np.pi * u))
             u = (u - u.min()) / max(u.max() - u.min(), 1e-12)
         core = f0 + (f1 - f0) * u
         nl = max(2, (n - nc) // 2)
         nr = max(2, n - nc - nl)
-        left = f0 - (f0 - lo) * np.geomspace(1, 0.05, nl)[::-1] if nl > 1 else []
+        # NOTE (fix): left part must INCREASE lo -> f0 (was assembled
+        # backward, folding the grid with negative dx and blowing up SOR)
+        left = lo + (f0 - lo) * np.geomspace(0.05, 1, nl) if nl > 1 else []
         right = f1 + (hi - f1) * np.geomspace(0.05, 1, nr) if nr > 1 else []
-        g = np.concatenate([np.atleast_1d(left), core, np.atleast_1d(right)])
+        # deduplicate junctions (left ends at f0 = core start -> dx=0 ->
+        # NaN) and pin exact endpoints before resampling
+        g = np.unique(np.concatenate(
+            [[lo], np.atleast_1d(left), core, np.atleast_1d(right), [hi]]))
         # resample to exactly n points (monotone interp)
         return np.interp(np.linspace(0, 1, n), np.linspace(0, 1, len(g)), g)
     x = core(nx, xlim[0], xlim[1], -0.5 * chord, 2.0 * chord, le_cluster=True)
     y = core(ny, ylim[0], ylim[1], -span / 2 - 0.5, span / 2 + 0.5,
-             le_cluster=False)
+             le_cluster=True)  # cluster at core ends = wing tips
     z = core(nz, zlim[0], zlim[1], -0.5 * chord, 0.5 * chord,
-             le_cluster=True)
+             le_cluster=False, center_cluster=True)
     return x, y, z
 
 
@@ -60,8 +71,10 @@ class TSDSolver:
     def __init__(self, Minf, alpha_deg=0.0, chord=1.0, span=6.0,
                  thick=0.12, gamma=1.4, nx=100, ny=40, nz=40,
                  omega=1.5, wake_gamma=None, wake_xmax=None,
-                 farfield=None, wake_sign=+1.0):
+                 farfield=None, wake_sign=+1.0, linear=False,
+                 bound_ramp=True):
         self.Minf = Minf
+        self.linear = linear  # freeze A = 1-Min^2 (diagnostic linear regime)
         self.alpha = np.radians(alpha_deg)
         self.chord = chord
         self.span = span
@@ -106,6 +119,11 @@ class TSDSolver:
             self.wake_scale = 1.0
         # NOTE: circulation needs Kutta/wake (above); without it
         # transpiration alone cannot lift (verified: CL~0).
+        # Bound-vortex sheet: the wake jump alone realizes only half the
+        # lift (no wing-bound circulation). Prescribe the wing jump too,
+        # ramped 0 at LE -> Gamma at TE (panel-mu-exact version is the
+        # refinement; linear ramp already recovers the missing half).
+        self.bound_ramp = bound_ramp and (wake_gamma is not None)
         # metrics
         self.dx = np.diff(self.x)
         self.dy = np.diff(self.y)
@@ -119,63 +137,67 @@ class TSDSolver:
         return (1 - self.Minf ** 2) - (gm + 1) * self.Minf ** 2 * phix
 
     def residual(self):
-        """Conservative TSD residual (interior). Returns R (nx,ny,nz)."""
+        """Conservative TSD residual, compact finite-volume form.
+
+        Node divergence straight from face fluxes (no face-averaging:
+        averaging widens the stencil to i+-2 with a checkerboard null
+        space that blows up SOR). Murman-Cole switching picks the
+        upwind flux at supersonic faces.
+        """
         phi, nx, ny, nz = self.phi, self.nx, self.ny, self.nz
         dx, dy, dz = self.dx, self.dy, self.dz
-        # face gradients / coefficients (vectorized)
+        R = np.zeros_like(phi)
+        # ---- x ----
         phix_f = (phi[1:, :, :] - phi[:-1, :, :]) / dx[:, None, None]
-        A_f = self._coeff_A(phix_f)
-        Fx = A_f * phix_f
-        # Murman-Cole: upwind flux where A<0 (use backward-biased stencil)
-        # implemented as flux blending below in x-divergence
-        sub = A_f < 0
-        # x-divergence with switching: central normally; where the
-        # downwind A is negative use fully-upwinded flux difference
-        dFx = np.zeros_like(phi)
-        # central face fluxes averaged to nodes (interior)
-        Fc = np.zeros((nx + 1, ny, nz))
-        Fc[1:-1] = 0.0
-        Fc[1:nx - 1] = 0.5 * (Fx[:-1] + Fx[1:])
-        Fc[nx - 1] = Fx[nx - 2]  # one-sided at outlet
-        Fc[0] = 0.0  # farfield (phi=0 enforced)
-        dFx = (Fc[1:] - Fc[:-1]) / np.append(dx, dx[-1])[:, None, None]
-        # supersonic correction: replace with upwind difference where needed.
-        # Node i is affected if face i-1 or face i is supersonic
-        # (faces indexed 0..nx-2 between nodes).
-        left = np.zeros((nx, ny, nz), dtype=bool)
-        left[1:] = sub
-        right = np.zeros((nx, ny, nz), dtype=bool)
-        right[:nx - 1] = sub
-        node_sup = left | right
-        node_sup[0] = False
-        # upwind divergence (backward flux difference)
-        Fup = np.zeros((nx + 1, ny, nz))
-        Fup[1:nx] = Fx
-        Fup[0] = 0.0
-        Fup[nx] = Fx[nx - 2]
-        dFx_up = (Fup[1:] - Fup[:-1]) / np.append(dx, dx[-1])[:, None, None]
-        R = dFx
-        R[node_sup] = dFx_up[node_sup]
-        # y, z divergences (central, linear)
+        if self.linear:
+            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
+            Fx = A_f * phix_f
+        else:
+            A_f = self._coeff_A(phix_f)
+            Fx = A_f * phix_f
+            # Murman-Cole: backward flux at supersonic faces
+            sub = A_f < 0
+            Fup = np.zeros_like(Fx)
+            Fup[1:] = A_f[1:] * (phi[1:-1, :, :] - phi[:-2, :, :]) / \
+                dx[:-1, None, None]
+            Fx = np.where(sub, Fup, Fx)
+        # control-volume widths (node-centered)
+        wx = np.empty(nx)
+        wx[1:-1] = 0.5 * (dx[:-1] + dx[1:])
+        wx[0] = dx[0]
+        wx[-1] = dx[-1]
+        # faces 0..nx-2; node i uses faces i-1, i
+        R[1:-1, :, :] += (Fx[1:, :, :] - Fx[:-1, :, :]) / \
+            wx[1:-1, None, None]
+        # ---- y (central) ----
         phiy_f = (phi[:, 1:, :] - phi[:, :-1, :]) / dy[None, :, None]
-        Gy = np.zeros((nx, ny + 1, nz))
-        Gy[:, 1:ny - 1, :] = 0.5 * (phiy_f[:, :-1, :] + phiy_f[:, 1:, :])
-        Gy[:, ny - 1, :] = phiy_f[:, ny - 2, :]
-        Gy[:, 0, :] = 0.0
-        R += (Gy[:, 1:, :] - Gy[:, :-1, :]) / np.append(dy, dy[-1])[None, :, None]
+        wy = np.empty(ny)
+        wy[1:-1] = 0.5 * (dy[:-1] + dy[1:])
+        wy[0] = dy[0]
+        wy[-1] = dy[-1]
+        R[:, 1:-1, :] += (phiy_f[:, 1:, :] - phiy_f[:, :-1, :]) / \
+            wy[None, 1:-1, None]
+        # ---- z (central) + wake branch cut ----
         phiz_f = (phi[:, :, 1:] - phi[:, :, :-1]) / dz[None, None, :]
-        # wake branch cut: subtract prescribed jump so the operator sees
-        # continuous gradient (fixed Gamma -> matrix unchanged, stable)
         k0 = self.k0
         if len(self.wake_ix) and len(self.wake_jy) and k0 >= 1:
             WI, WJ = np.meshgrid(self.wake_ix, self.wake_jy, indexing='ij')
             phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * self.wake_scale
                                        * self.wake_G[WJ] / self.dz[k0 - 1])
-        Hz = np.zeros((nx, ny, nz + 1))
-        Hz[:, :, 1:nz - 1] = 0.5 * (phiz_f[:, :, :-1] + phiz_f[:, :, 1:])
-        Hz[:, :, nz - 1] = phiz_f[:, :, nz - 2]
-        Hz[:, :, 0] = 0.0
-        R += (Hz[:, :, 1:] - Hz[:, :, :-1]) / np.append(dz, dz[-1])[None, None, :]
+        if self.bound_ramp and len(self.wing_ix) and len(self.wing_jy) \
+                and k0 >= 1:
+            BI, BJ = np.meshgrid(self.wing_ix, self.wing_jy, indexing='ij')
+            xc = np.clip(self.xc[self.wing_ix] / self.chord, 0.0, 1.0)
+            ramp = xc[:, None]  # 0 at LE -> 1 at TE
+            phiz_f[BI, BJ, k0 - 1] -= (self.wake_sign * self.wake_scale
+                                       * ramp * self.wake_G[BJ]
+                                       / self.dz[k0 - 1])
+        wz = np.empty(nz)
+        wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
+        wz[0] = dz[0]
+        wz[-1] = dz[-1]
+        R[:, :, 1:-1] += (phiz_f[:, :, 1:] - phiz_f[:, :, :-1]) / \
+            wz[None, None, 1:-1]
         # wing transpiration BC on z=0 plane (both sides)
         R = self._apply_wing_bc(R)
         # farfield Dirichlet (phi=0): zero residual enforced via mask in solve
@@ -248,12 +270,35 @@ class TSDSolver:
         ii, jj, kk = np.meshgrid(np.arange(nx), np.arange(ny),
                                  np.arange(nz), indexing='ij')
         red = ((ii + jj + kk) % 2 == 0)
-        # base diagonal (linear part; wing BC is RHS-only)
-        dxm = np.append(self.dx, self.dx[-1])[:, None, None]
-        dym = np.append(self.dy, self.dy[-1])[None, :, None]
-        dzm = np.append(self.dz, self.dz[-1])[None, None, :]
+        # exact compact-stencil diagonal |A_ii| (SOR needs the true
+        # diagonal for the omega<2 guarantee on stretched grids)
+        dx, dy, dz = self.dx, self.dy, self.dz
+        wx = np.empty(nx)
+        wx[1:-1] = 0.5 * (dx[:-1] + dx[1:])
+        wx[0] = dx[0]
+        wx[-1] = dx[-1]
+        wy = np.empty(ny)
+        wy[1:-1] = 0.5 * (dy[:-1] + dy[1:])
+        wy[0] = dy[0]
+        wy[-1] = dy[-1]
+        wz = np.empty(nz)
+        wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
+        wz[0] = dz[0]
+        wz[-1] = dz[-1]
         beta2 = max(1 - self.Minf ** 2, 0.05)
-        D = 2 * beta2 / dxm ** 2 + 2 / dym ** 2 + 2 / dzm ** 2
+        ax = np.empty(nx)
+        ax[1:-1] = beta2 * (1 / (dx[:-1] * wx[1:-1]) + 1 / (dx[1:] * wx[1:-1]))
+        ax[0] = beta2 * 2 / dx[0] ** 2
+        ax[-1] = beta2 * 2 / dx[-1] ** 2
+        ay = np.empty(ny)
+        ay[1:-1] = (1 / (dy[:-1] * wy[1:-1]) + 1 / (dy[1:] * wy[1:-1]))
+        ay[0] = 2 / dy[0] ** 2
+        ay[-1] = 2 / dy[-1] ** 2
+        az = np.empty(nz)
+        az[1:-1] = (1 / (dz[:-1] * wz[1:-1]) + 1 / (dz[1:] * wz[1:-1]))
+        az[0] = 2 / dz[0] ** 2
+        az[-1] = 2 / dz[-1] ** 2
+        D = (ax[:, None, None] + ay[None, :, None] + az[None, None, :])
         for it in range(itmax):
             # ramp wake circulation to avoid impulsive startup
             if ramp > 0:
