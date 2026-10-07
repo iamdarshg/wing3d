@@ -26,6 +26,7 @@ residual TE drag; calibration item).
 | Case | OpenFOAM RANS | Reference | Verdict |
 |---|---|---|---|
 | Ahmed-like car | CD 0.275 (conv. flat) | published Ahmed 0.26-0.28 | VALIDATED |
+| Sphere Re=100 lam. | CD 1.106 (conv. flat) | Schiller-Naumann 1.09 | VALIDATED (+1.5%) |
 | NACA0012 AR6 wing | CL 0.11, CD 0.022 | expected ~0.35/~0.018 | MESH-LIMITED (see below) |
 
 Wing RANS details: 152-172k cells (level 3-4 + LE box level 6),

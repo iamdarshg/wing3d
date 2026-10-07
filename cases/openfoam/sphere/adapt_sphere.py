@@ -1,0 +1,35 @@
+import os
+SPH = 'D:\\CodeProjects\\cfd\\cases\\openfoam\\sphere'
+
+p = os.path.join(SPH, 'system', 'snappyHexMeshDict')
+s = open(p).read()
+s = s.replace('wing.stl', 'sphere.stl')
+s = s.replace('name wing;', 'name sphere;')
+s = s.replace('min  (-1.0 -3.5 -1.0);', 'min  (-2.0 -2.0 -2.0);')
+s = s.replace('max  ( 2.5 3.5 1.0);', 'max  (4.0 2.0 2.0);')
+s = s.replace('locationInMesh (0.11 6.11 0.13);',
+              'locationInMesh (0.0 5.0 0.0);')
+s = s.replace('"wing.*"', '"sphere.*"')
+s = s.replace('level (3 4)', 'level (3 4)')
+s = s.replace('maxGlobalCells 200000', 'maxGlobalCells 120000')
+s = s.replace('maxLocalCells 60000', 'maxLocalCells 40000')
+open(p, 'w').write(s)
+
+# leBox -> seBox (sphere refinement box around sphere + near wake)
+s = s.replace('leBox', 'seBox')
+s = s.replace('min  (-0.1 -3.1 -0.2);', 'min  (-1.5 -1.5 -1.5);')
+s = s.replace('max  ( 0.3 3.1 0.2);', 'max  (4.0 1.5 1.5);')
+s = s.replace('min  (-0.02 -3.05 -0.05);', 'min  (-1.5 -1.5 -1.5);')
+s = s.replace('max  ( 0.08 3.05 0.05);', 'max  (4.0 1.5 1.5);')
+open(p, 'w').write(s)
+
+p = os.path.join(SPH, 'system', 'controlDict')
+s = open(p).read()
+s = s.replace('patches ("wing")', 'patches ("sphere")')
+s = s.replace('CofR (0.25 0 0)', 'CofR (0 0 0)')
+s = s.replace('magUInf 30.0', 'magUInf 1.0')
+s = s.replace('lRef 1.0', 'lRef 2.0')
+s = s.replace('Aref 6.0', 'Aref 3.1416')
+s = s.replace('fields (p U k omega)', 'fields (p U)')
+open(p, 'w').write(s)
+print('sphere adapted')
