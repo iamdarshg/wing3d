@@ -72,9 +72,14 @@ class TSDSolver:
                  thick=0.12, gamma=1.4, nx=100, ny=40, nz=40,
                  omega=1.5, wake_gamma=None, wake_xmax=None,
                  farfield=None, wake_sign=+1.0, linear=False,
-                 bound_ramp=True):
+                 bound_ramp=True, wing_jump=None):
         self.Minf = Minf
         self.linear = linear  # freeze A = 1-Min^2 (diagnostic linear regime)
+        self._frozen = None  # frozen supersonic map (nonlinear epochs)
+        self._frozenA = None  # frozen full A coefficient (nonlinear epochs)
+        # exact bound jump from panel mu (array over (wing_ix, wing_jy));
+        # None -> linear LE->TE ramp of wake Gamma (crude fallback)
+        self.wing_jump = wing_jump
         self.alpha = np.radians(alpha_deg)
         self.chord = chord
         self.span = span
@@ -136,6 +141,12 @@ class TSDSolver:
         gm = self.gamma
         return (1 - self.Minf ** 2) - (gm + 1) * self.Minf ** 2 * phix
 
+    def _sup_mask(self):
+        """Current supersonic-face mask (for frozen-coefficient epochs)."""
+        dx = self.dx
+        phix_f = (self.phi[1:, :, :] - self.phi[:-1, :, :]) / dx[:, None, None]
+        return self._coeff_A(phix_f) < 0
+
     def residual(self):
         """Conservative TSD residual, compact finite-volume form.
 
@@ -153,10 +164,18 @@ class TSDSolver:
             A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
             Fx = A_f * phix_f
         else:
-            A_f = self._coeff_A(phix_f)
+            # Frozen full coefficient (self._frozenA is not None): fixed
+            # linear operator across SOR epochs (nonlinear SOR needs it).
+            if self._frozenA is not None:
+                A_f = self._frozenA
+            else:
+                A_f = self._coeff_A(phix_f)
             Fx = A_f * phix_f
-            # Murman-Cole: backward flux at supersonic faces
-            sub = A_f < 0
+            # Murman-Cole: backward flux at supersonic faces.
+            # Frozen map (self._frozen is not None) keeps the operator
+            # fixed across SOR epochs (switching chatter stalls SOR).
+            sub = self._frozen if self._frozen is not None \
+                else self._sup_mask()
             Fup = np.zeros_like(Fx)
             Fup[1:] = A_f[1:] * (phi[1:-1, :, :] - phi[:-2, :, :]) / \
                 dx[:-1, None, None]
@@ -187,11 +206,14 @@ class TSDSolver:
         if self.bound_ramp and len(self.wing_ix) and len(self.wing_jy) \
                 and k0 >= 1:
             BI, BJ = np.meshgrid(self.wing_ix, self.wing_jy, indexing='ij')
-            xc = np.clip(self.xc[self.wing_ix] / self.chord, 0.0, 1.0)
-            ramp = xc[:, None]  # 0 at LE -> 1 at TE
+            if self.wing_jump is not None:
+                jump = np.asarray(self.wing_jump)
+            else:
+                xc = np.clip(self.xc[self.wing_ix] / self.chord, 0.0, 1.0)
+                ramp = xc[:, None]  # 0 at LE -> 1 at TE
+                jump = ramp * self.wake_G[BJ]
             phiz_f[BI, BJ, k0 - 1] -= (self.wake_sign * self.wake_scale
-                                       * ramp * self.wake_G[BJ]
-                                       / self.dz[k0 - 1])
+                                       * jump / self.dz[k0 - 1])
         wz = np.empty(nz)
         wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
         wz[0] = dz[0]
@@ -252,12 +274,33 @@ class TSDSolver:
         upd[:, :, 0] = 0
         upd[:, :, -1] = 0
 
-    def solve(self, itmax=600, tol=1e-5, verbose=True, ramp=100):
+    def solve(self, itmax=600, tol=1e-5, verbose=True, ramp=100,
+              freeze_every=0, init_linear=True):
         """Red-black SOR (SPD operator: standard form).
 
         ramp: iterations over which wake_scale goes 0 -> 1 (avoids
         startup shock from impulsive circulation).
+        freeze_every: nonlinear mode: refresh the frozen supersonic map
+        every N iters (0 = live map). init_linear: solve the linear
+        problem first and use it as the nonlinear init (continuation).
         """
+        if init_linear and not self.linear:
+            # linear init WITH the same wake/farfield (lifting from step 0)
+            lin = TSDSolver(self.Minf, alpha_deg=np.degrees(self.alpha),
+                            chord=self.chord, span=self.span,
+                            thick=self.thick, gamma=self.gamma,
+                            nx=self.nx, ny=self.ny, nz=self.nz,
+                            omega=1.2,
+                            wake_gamma=None, farfield=self.farfield,
+                            linear=True, bound_ramp=self.bound_ramp)
+            lin.wake_G = self.wake_G.copy()
+            lin.wake_scale = 1.0
+            lin.solve(itmax=400, tol=1e-6, verbose=False, ramp=0,
+                      init_linear=False)
+            # transplant interior (keep our farfield box values)
+            self.phi[1:-1, 1:-1, 1:-1] = lin.phi[1:-1, 1:-1, 1:-1]
+            if verbose:
+                print('  linear init done', flush=True)
         if self.farfield is not None:
             F = self.farfield
             self.phi[0, :, :] = F[0, :, :]
@@ -303,6 +346,16 @@ class TSDSolver:
             # ramp wake circulation to avoid impulsive startup
             if ramp > 0:
                 self.wake_scale = min(1.0, it / max(ramp, 1))
+            # frozen-coefficient epochs (nonlinear): refresh supersonic
+            # map + full A every N iters; SOR converges the fixed
+            # linear operator inside each epoch
+            if freeze_every and not self.linear:
+                if it % freeze_every == 0:
+                    self._frozen = self._sup_mask()
+                    dx = self.dx
+                    phix = (self.phi[1:, :, :] - self.phi[:-1, :, :]) / \
+                        dx[:, None, None]
+                    self._frozenA = self._coeff_A(phix)
             # farfield tracks the ramp (frozen full-jump farfield against
             # partial interior jump destabilizes corners)
             if self.farfield is not None:
@@ -324,9 +377,13 @@ class TSDSolver:
             if it % 50 == 0 or it == itmax - 1:
                 r = np.abs(R[1:-1, 1:-1, 1:-1]).max()
                 if verbose:
-                    print(f'  it {it}: max|R|={r:.3e}')
+                    nsup = int(self._sup_mask().sum()) if not self.linear \
+                        else 0
+                    print(f'  it {it}: max|R|={r:.3e} nsup={nsup}')
                 if r < tol:
                     break
+        self._frozen = None  # release map (live evaluation afterwards)
+        self._frozenA = None
         return self.phi
 
     def surface_cp(self):
