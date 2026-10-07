@@ -112,7 +112,7 @@ simulationType RAS;
 RAS { RASModel SpalartAllmaras; turbulence on; printCoeffs on; }
 """)
     with open(os.path.join(root, '0', 'U'), 'w') as f:
-        f.write(f"""FoamFile {{ version 2.0; format ascii; class internalField; object U; }}
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volVectorField; object U; }}
 dimensions [0 1 -1 0 0 0 0];
 internalField uniform ({ux} 0 {uz});
 boundaryField {{
@@ -123,7 +123,7 @@ boundaryField {{
 }}
 """)
     with open(os.path.join(root, '0', 'p'), 'w') as f:
-        f.write("""FoamFile { version 2.0; format ascii; class internalField; object p; }
+        f.write("""FoamFile { version 2.0; format ascii; class volScalarField; object p; }
 dimensions [0 2 -2 0 0 0 0];
 internalField uniform 0;
 boundaryField {
@@ -135,7 +135,7 @@ boundaryField {
 """ % stl_name.replace('.stl', ''))
     nut = 3 * nu
     with open(os.path.join(root, '0', 'nut'), 'w') as f:
-        f.write(f"""FoamFile {{ version 2.0; format ascii; class internalField; object nut; }}
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volScalarField; object nut; }}
 dimensions [0 2 -1 0 0 0 0];
 internalField uniform {nut};
 boundaryField {{
@@ -146,7 +146,7 @@ boundaryField {{
 }}
 """)
     with open(os.path.join(root, '0', 'nuTilda'), 'w') as f:
-        f.write(f"""FoamFile {{ version 2.0; format ascii; class internalField; object nuTilda; }}
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volScalarField; object nuTilda; }}
 dimensions [0 2 -1 0 0 0 0];
 internalField uniform {3 * nu};
 boundaryField {{
@@ -168,7 +168,195 @@ simpleFoam > log.simpleFoam 2>&1
     print('wrote case', root)
 
 
-def parse_force_coeffs(root):
+def write_transonic_case(root, stl_name='slab.stl', chord=1.0, span_in=1.2,
+                         alpha_deg=1.25, mach=0.8, level=(4, 5)):
+    """rhoSimpleFoam transonic Euler anchor (slip walls, laminar).
+
+    Quasi-2D slab piercing the y-walls; shock location + wave drag anchor
+    for the TSD/KT compressibility path. Keeps cells < ~100k for 395MB RAM.
+    """
+    os.makedirs(os.path.join(root, 'system'), exist_ok=True)
+    os.makedirs(os.path.join(root, '0'), exist_ok=True)
+    os.makedirs(os.path.join(root, 'constant'), exist_ok=True)
+    a = np.radians(alpha_deg)
+    p_inf, T_inf = 1e5, 300.0
+    Rgas, gam = 287.0, 1.4
+    rho_inf = p_inf / (Rgas * T_inf)
+    a_inf = np.sqrt(gam * Rgas * T_inf)
+    Umag = mach * a_inf
+    ux, uz = Umag * np.cos(a), Umag * np.sin(a)
+    qinf = 0.5 * rho_inf * Umag ** 2
+    patch = stl_name  # snappy keeps the full geometry key as patch name
+    x0, x1 = -10 * chord, 21 * chord
+    y0, y1 = -span_in / 2, span_in / 2
+    z0, z1 = -10 * chord, 10 * chord
+    nx, ny, nz = 80, 4, 60
+    with open(os.path.join(root, 'system', 'blockMeshDict'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class dictionary; object blockMeshDict; }}
+convertToMeters 1;
+vertices (
+ ({x0} {y0} {z0}) ({x1} {y0} {z0}) ({x1} {y1} {z0}) ({x0} {y1} {z0})
+ ({x0} {y0} {z1}) ({x1} {y0} {z1}) ({x1} {y1} {z1}) ({x0} {y1} {z1}));
+blocks (hex (0 1 2 3 4 5 6 7) ({nx} {ny} {nz}) simpleGrading (1 1 1));
+edges ();
+boundary (
+ farfield {{ type patch; faces ((0 4 7 3) (1 2 6 5) (0 1 5 4) (3 7 6 2)); }}
+ symm {{ type symmetry; faces ((0 3 2 1) (4 5 6 7)); }});
+""")
+    with open(os.path.join(root, 'system', 'snappyHexMeshDict'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class dictionary; object snappyHexMeshDict; }}
+castellatedMesh true; snap true; addLayers false;
+geometry {{ {stl_name} {{ type triSurfaceMesh; file "{stl_name}"; }}
+ wakebox {{ type searchableBox; min (0 {y0} -0.6); max (4 {y1} 0.6); }} }}
+castellatedMeshControls {{
+ maxLocalCells 50000; maxGlobalCells 95000; minRefinementCells 10;
+ maxLoadUnbalance 0.1; nCellsBetweenLevels 3;
+ features ();
+ refinementSurfaces {{ {stl_name} {{ level ({level[0]} {level[1]}); patchInfo {{ type wall; }} }} }}
+ resolveFeatureAngle 25;
+ refinementRegions {{
+  {stl_name} {{ mode distance; levels ((0.2 3) (0.5 2)); }}
+  wakebox {{ mode inside; levels ((1E15 2)); }} }}
+ locationInMesh ({(x0 + x1) / 2} 0 {(z0 + z1) / 2});
+ allowFreeStandingZoneFaces true;
+}}
+snapControls {{ nSmoothPatch 3; tolerance 2.0; nSolveIter 30; nRelaxIter 5; }}
+addLayersControls {{ layers {{ }} expansionRatio 1.2; finalLayerThickness 0.5;
+ minThickness 0.1; nGrow 0; featureAngle 60; nRelaxIter 3;
+ nSmoothSurfaceNormals 1; nSmoothNormals 3; nSmoothThickness 10;
+ maxFaceThicknessRatio 0.5; maxThicknessToMedialRatio 0.3;
+ minMedianAxisAngle 90; nBufferCellsNoExtrude 0; nLayerIter 50; }}
+meshQualityControls {{ #include "meshQualityDict" nSmoothScale 4; errorReduction 0.75; }}
+writeFlags (scalarLevels);
+mergeTolerance 1e-6;
+""")
+    with open(os.path.join(root, 'system', 'controlDict'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class dictionary; object controlDict; }}
+application rhoSimpleFoam;
+startFrom startTime; startTime 0; stopAt endTime; endTime 1500;
+deltaT 1; writeControl timeStep; writeInterval 1500;
+purgeWrite 0; writeFormat ascii; writePrecision 6; writeCompression off;
+timeFormat general; timePrecision 6; runTimeModifiable true;
+functions {{
+ forces {{
+  type forceCoeffs; libs ("libforces.so");
+  writeControl timeStep; writeInterval 50;
+  patches ("{patch}");
+  rho rhoInf; rhoInf {rho_inf:.4f}; CofR (0.25 0 0);
+  liftDir (0 0 1); dragDir (1 0 0); pitchAxis (0 1 0);
+  magUInf {Umag:.3f}; lRef {chord}; Aref {chord * span_in};
+ }}
+ residuals {{ type residuals; libs ("libutilityFunctionObjects.so");
+  writeControl timeStep; writeInterval 50; fields (p U h); }}
+ surfCp {{
+  type surfaces; libs ("libsampling.so");
+  writeControl writeTime; surfaceFormat raw; fields (p);
+  interpolationScheme cell;
+  surfaces ( foil {{ type patch; patches ("{patch}"); }} );
+ }}
+}}
+""")
+    with open(os.path.join(root, 'system', 'fvSchemes'), 'w') as f:
+        f.write("""FoamFile { version 2.0; format ascii; class dictionary; object fvSchemes; }
+ddtSchemes { default steadyState; }
+gradSchemes { default Gauss linear; }
+divSchemes { default none; div(phi,U) Gauss upwind; div(phi,h) Gauss upwind;
+ div(phid,p) Gauss upwind; div(phi,K) Gauss upwind; div(phi,epsilon) Gauss upwind; div(phi,k) Gauss upwind;
+ div((muEff*dev2(T(grad(U))))) Gauss linear;
+ div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear; }
+laplacianSchemes { default Gauss linear corrected; }
+interpolationSchemes { default linear; }
+snGradSchemes { default corrected; }
+""")
+    with open(os.path.join(root, 'system', 'fvSolution'), 'w') as f:
+        f.write("""FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
+solvers {
+ p { solver GAMG; tolerance 1e-7; relTol 0.01; smoother GaussSeidel; }
+ "(U|h)" { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.1; }
+}
+SIMPLE { nNonOrthogonalCorrectors 0; transonic yes;
+ residualControl { p 1e-4; U 1e-4; h 1e-4; } }
+relaxationFactors { fields { p 0.3; rho 0.05; } equations { U 0.7; h 0.7; } }
+""")
+    with open(os.path.join(root, 'constant', 'thermophysicalProperties'),
+              'w') as f:
+        f.write("""FoamFile { version 2.0; format ascii; class dictionary; object thermophysicalProperties; }
+thermoType { type hePsiThermo; mixture pureMixture; transport sutherland;
+ thermo hConst; equationOfState perfectGas; specie specie; energy sensibleEnthalpy; }
+mixture { specie { nMoles 1; molWeight 28.9; }
+ thermodynamics { Cp 1005; Hf 0; } transport { As 1.458e-06; Ts 110.4; } }
+""")
+    with open(os.path.join(root, 'constant', 'turbulenceProperties'),
+              'w') as f:
+        f.write("""FoamFile { version 2.0; format ascii; class dictionary; object turbulenceProperties; }
+simulationType laminar;
+""")
+    with open(os.path.join(root, '0', 'U'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volVectorField; object U; }}
+dimensions [0 1 -1 0 0 0 0];
+internalField uniform ({ux:.3f} 0 {uz:.3f});
+boundaryField {{
+ farfield {{ type freestream; freestreamValue uniform ({ux:.3f} 0 {uz:.3f}); }}
+ symm {{ type symmetry; }}
+ "{patch}" {{ type slip; }}
+}}
+""")
+    with open(os.path.join(root, '0', 'p'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volScalarField; object p; }}
+dimensions [1 -1 -2 0 0 0 0];
+internalField uniform {p_inf:.0f};
+boundaryField {{
+ farfield {{ type freestreamPressure;
+  freestreamValue uniform {p_inf:.0f}; }}
+ symm {{ type symmetry; }}
+ "{patch}" {{ type zeroGradient; }}
+}}
+""")
+    with open(os.path.join(root, '0', 'T'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volScalarField; object T; }}
+dimensions [0 0 0 1 0 0 0];
+internalField uniform {T_inf:.0f};
+boundaryField {{
+ farfield {{ type freestream; freestreamValue uniform {T_inf:.0f}; }}
+ symm {{ type symmetry; }}
+ "{patch}" {{ type zeroGradient; }}
+}}
+""")
+    with open(os.path.join(root, 'Allrun'), 'w') as f:
+        f.write("""#!/bin/bash
+source /usr/lib/openfoam/openfoam2406/etc/bashrc
+set -e
+blockMesh > log.blockMesh 2>&1
+snappyHexMesh -overwrite > log.snappy 2>&1
+rhoSimpleFoam > log.rhoSimpleFoam 2>&1
+""")
+    print('wrote transonic case', root, 'U=%.1f q=%.0f' % (Umag, qinf))
+    return {'U': Umag, 'rho': rho_inf, 'p': float(p_inf), 'q': qinf,
+            'patch': patch}
+
+
+def parse_surf_cp(root, p_inf=1e5, qinf=45373.0):
+    """Parse surfaces/raw patch Cp -> arrays (x, z, Cp) sorted by x.
+    Returns dict with upper/lower split by z sign at mid-span... raw."""
+    import glob
+    pats = sorted(glob.glob(os.path.join(root, 'postProcessing', 'surfCp',
+                                         '*', 'foil.raw')))
+    if not pats:
+        return None
+    pts = []
+    with open(pats[-1]) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            p = line.split()
+            try:
+                x, y, z, pr = map(float, p[:4])
+            except Exception:
+                continue
+            pts.append((x, y, z, (pr - p_inf) / qinf))
+    a = np.array(pts)
+    return {'x': a[:, 0], 'y': a[:, 1], 'z': a[:, 2], 'cp': a[:, 3]}
     """Parse latest forceCoeffs output -> dict(CL, CD)."""
     import glob
     import re
