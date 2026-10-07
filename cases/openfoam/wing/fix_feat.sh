@@ -1,1 +1,0 @@
-cd /case && python3 - 2>/dev/null || perl -0pi -e 's/    features\n    \(\n        \{\n            file "wing\.eMesh";\n            level 6;\n        \}\n    \);//' system/snappyHexMeshDict && grep -c 'wing.eMesh' system/snappyHexMeshDict; echo EDITED
