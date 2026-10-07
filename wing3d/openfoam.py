@@ -205,7 +205,7 @@ boundary (
 """)
     with open(os.path.join(root, 'system', 'snappyHexMeshDict'), 'w') as f:
         f.write(f"""FoamFile {{ version 2.0; format ascii; class dictionary; object snappyHexMeshDict; }}
-castellatedMesh true; snap true; addLayers false;
+castellatedMesh true; snap true; addLayers true;
 geometry {{ {stl_name} {{ type triSurfaceMesh; file "{stl_name}"; }}
  wakebox {{ type searchableBox; min (0 {y0} -0.6); max (4 {y1} 0.6); }} }}
 castellatedMeshControls {{
@@ -221,12 +221,17 @@ castellatedMeshControls {{
  allowFreeStandingZoneFaces true;
 }}
 snapControls {{ nSmoothPatch 3; tolerance 2.0; nSolveIter 30; nRelaxIter 5; }}
-addLayersControls {{ layers {{ }} expansionRatio 1.2; finalLayerThickness 0.5;
- minThickness 0.1; nGrow 0; featureAngle 60; nRelaxIter 3;
+addLayersControls {{
+ relativeSizes false;
+ layers {{ "{stl_name}" {{ nSurfaceLayers 5; }} }}
+ expansionRatio 1.2; finalLayerThickness 3e-4; minThickness 1e-5;
+ nGrow 0; featureAngle 60; slipFeatureAngle 30; nRelaxIter 5;
  nSmoothSurfaceNormals 1; nSmoothNormals 3; nSmoothThickness 10;
  maxFaceThicknessRatio 0.5; maxThicknessToMedialRatio 0.3;
- minMedianAxisAngle 90; nBufferCellsNoExtrude 0; nLayerIter 50; }}
+ minMedianAxisAngle 90; minMedialAxisAngle 90; nBufferCellsNoExtrude 0; nLayerIter 50; }}
 meshQualityControls {{ #include "meshQualityDict" nSmoothScale 4; errorReduction 0.75; }}
+writeFlags (scalarLevels layerSets);
+mergeTolerance 1e-6;
 writeFlags (scalarLevels);
 mergeTolerance 1e-6;
 """)
@@ -247,12 +252,21 @@ functions {{
   magUInf {Umag:.3f}; lRef {chord}; Aref {chord * span_in};
  }}
  residuals {{ type residuals; libs ("libutilityFunctionObjects.so");
-  writeControl timeStep; writeInterval 50; fields (p U h); }}
+  writeControl timeStep; writeInterval 50; fields (p U h nuTilda); }}
  surfCp {{
   type surfaces; libs ("libsampling.so");
   writeControl writeTime; surfaceFormat raw; fields (p);
   interpolationScheme cell;
   surfaces ( foil {{ type patch; patches ("{patch}"); }} );
+ }}
+ limT {{
+  type limitTemperature; libs ("libfieldFunctionObjects.so");
+  writeControl timeStep; writeInterval 1;
+  min 200; max 500;
+ }}
+ yPlus {{
+  type yPlus; libs ("libfieldFunctionObjects.so");
+  writeControl writeTime;
  }}
 }}
 """)
@@ -260,23 +274,24 @@ functions {{
         f.write("""FoamFile { version 2.0; format ascii; class dictionary; object fvSchemes; }
 ddtSchemes { default steadyState; }
 gradSchemes { default Gauss linear; }
-divSchemes { default none; div(phi,U) Gauss upwind; div(phi,h) Gauss upwind;
- div(phid,p) Gauss upwind; div(phi,K) Gauss upwind; div(phi,epsilon) Gauss upwind; div(phi,k) Gauss upwind;
+divSchemes { default none; div(phi,U) Gauss linearUpwind grad(U); div(phi,h) Gauss linearUpwind grad(h);
+ div(phid,p) Gauss upwind; div(phi,K) Gauss upwind; div(phi,nuTilda) Gauss linearUpwind grad(U); div(phi,epsilon) Gauss upwind; div(phi,k) Gauss upwind;
  div((muEff*dev2(T(grad(U))))) Gauss linear;
  div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear; }
 laplacianSchemes { default Gauss linear corrected; }
 interpolationSchemes { default linear; }
 snGradSchemes { default corrected; }
+wallDist { method meshWave; }
 """)
     with open(os.path.join(root, 'system', 'fvSolution'), 'w') as f:
         f.write("""FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
 solvers {
  p { solver GAMG; tolerance 1e-7; relTol 0.01; smoother GaussSeidel; }
- "(U|h)" { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.1; }
+ "(U|h|nuTilda)" { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.1; }
 }
 SIMPLE { nNonOrthogonalCorrectors 0; transonic yes;
- residualControl { p 1e-4; U 1e-4; h 1e-4; } }
-relaxationFactors { fields { p 0.3; rho 0.05; } equations { U 0.7; h 0.7; } }
+ residualControl { p 1e-4; U 1e-4; h 1e-4; "(nuTilda)" 1e-4; } }
+relaxationFactors { fields { p 0.3; rho 0.05; } equations { U 0.5; h 0.5; nuTilda 0.5; } }
 """)
     with open(os.path.join(root, 'constant', 'thermophysicalProperties'),
               'w') as f:
@@ -289,7 +304,39 @@ mixture { specie { nMoles 1; molWeight 28.9; }
     with open(os.path.join(root, 'constant', 'turbulenceProperties'),
               'w') as f:
         f.write("""FoamFile { version 2.0; format ascii; class dictionary; object turbulenceProperties; }
-simulationType laminar;
+simulationType RAS;
+RAS { RASModel SpalartAllmaras; turbulence on; printCoeffs on; }
+""")
+    nu_air = 1.81e-5 / rho_inf
+    with open(os.path.join(root, '0', 'nut'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volScalarField; object nut; }}
+dimensions [0 2 -1 0 0 0 0];
+internalField uniform {3 * nu_air:.3e};
+boundaryField {{
+ farfield {{ type calculated; value uniform {3 * nu_air:.3e}; }}
+ symm {{ type symmetry; }}
+ "{patch}" {{ type nutUSpaldingWallFunction; value uniform {3 * nu_air:.3e}; }}
+}}
+""")
+    with open(os.path.join(root, '0', 'nuTilda'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volScalarField; object nuTilda; }}
+dimensions [0 2 -1 0 0 0 0];
+internalField uniform {3 * nu_air:.3e};
+boundaryField {{
+ farfield {{ type freestream; freestreamValue uniform {3 * nu_air:.3e}; }}
+ symm {{ type symmetry; }}
+ "{patch}" {{ type fixedValue; value uniform 0; }}
+}}
+""")
+    with open(os.path.join(root, '0', 'alphat'), 'w') as f:
+        f.write(f"""FoamFile {{ version 2.0; format ascii; class volScalarField; object alphat; }}
+dimensions [1 -1 -1 0 0 0 0];
+internalField uniform 0;
+boundaryField {{
+ farfield {{ type calculated; value uniform 0; }}
+ symm {{ type symmetry; }}
+ "{patch}" {{ type compressible::alphatWallFunction; value uniform 0; }}
+}}
 """)
     with open(os.path.join(root, '0', 'U'), 'w') as f:
         f.write(f"""FoamFile {{ version 2.0; format ascii; class volVectorField; object U; }}
@@ -298,7 +345,7 @@ internalField uniform ({ux:.3f} 0 {uz:.3f});
 boundaryField {{
  farfield {{ type freestream; freestreamValue uniform ({ux:.3f} 0 {uz:.3f}); }}
  symm {{ type symmetry; }}
- "{patch}" {{ type slip; }}
+ "{patch}" {{ type noSlip; }}
 }}
 """)
     with open(os.path.join(root, '0', 'p'), 'w') as f:

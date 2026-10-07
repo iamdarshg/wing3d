@@ -47,6 +47,26 @@ mesh provenance/orientation and ambiguous force normalization made it
 unsuitable as a reference. 2D validation rests on Abbott/von Doenhoff
 via the in-repo Hess-Smith panel (cl 0.46 vs 0.44 at 4deg).
 
+## 5. NACA0012 transonic anchor, M0.8 alpha=1.25deg (Euler)
+
+Case: `cases/openfoam/transonic` (slab STL pierces y-walls; symmetry
+quasi-2D), container `oftrans`. AGARD-like case 1.
+
+- **rhoCentralFoam + LTS (Kurganov-Tadmor, best-in-class for shocks)**,
+  12k cells: **CL = 0.402, CD = 0.0414** (flat). Upper-surface
+  supersonic pocket Cpmin -1.27 with a **crisp shock at x/c ~ 0.35**
+  (Cp -1.22 -> -0.31 across one station). Lower Cpmin -0.22.
+  VERDICT: ANCHOR SET (shock location + Euler CL for TSD validation).
+- **rhoSimpleFoam + SA** (70k cells, wall functions, y+ uncontrolled):
+  converged (residuals met) but to CL = 0.028, CD = 0.048 --
+  non-physical (false convergence: upwind dissipation + bad wall
+  treatment bury the Kutta condition; effective-Re-mush diagnosis).
+  NOT used as truth. Lesson: SIMPLE+upwind needs thin layers
+  (y+ 30-100) + linearUpwind; kept as open item.
+- wing3d panel + Karman-Tsien at M0.8: midspan cl ~ 0.13,
+  Cpmin -1.05, no shock (KT is subsonic-only, expected).
+  Gap to close with TSD: shock@0.35 + CL~0.4.
+
 ## Environment notes (this host)
 
 - Docker bind mounts broken (`Cannot allocate memory` on readdir);
