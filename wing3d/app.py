@@ -62,7 +62,179 @@ justify-content:space-between;padding:0 18px;border-bottom:1px solid #26303a88}
 .panel-index{font-family:var(--mono);font-size:10px;color:#678591}
 .plot-panel img{width:100%;display:block}
 .subtle{color:var(--muted);font-size:11px}
+table.val{width:100%;border-collapse:collapse;font-size:11px;margin:0}
+table.val th{text-align:left;font-size:9px;letter-spacing:1px;color:#9baab7;
+font-weight:500;padding:10px 14px;border-bottom:1px solid var(--border)}
+table.val td{padding:9px 14px;border-bottom:1px solid #1b242e;font-family:var(--mono);
+font-size:11px}
+table.val tr:last-child td{border-bottom:none}
+.navlink{display:block;margin-top:18px;font-size:12px}
+svg.plot{width:100%;height:auto;display:block}
+.legend{font-family:var(--mono);font-size:10px;fill:#9baab7}
+.ax{stroke:#2a3540;stroke-width:1}
+.grid{stroke:#1a232c;stroke-width:1}
+.tick{font-family:var(--mono);font-size:9px;fill:#778c9b}
 """
+
+ANCHOR_JSON = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), 'cases', 'openfoam', 'transonic',
+    'summary.json')
+
+
+def _load_anchors():
+    import json
+    try:
+        with open(ANCHOR_JSON) as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def _svg_xy(series, w=760, h=300, xlabel='', ylabel='',
+            xrange=None, yrange=None, inverted_y=False):
+    """series: [(label, color, [(x,y),...])]. Returns SVG string."""
+    pad_l, pad_r, pad_t, pad_b = 58, 16, 14, 34
+    W, H = w - pad_l - pad_r, h - pad_t - pad_b
+    xs = [p[0] for _, _, pts in series for p in pts]
+    ys = [p[1] for _, _, pts in series for p in pts]
+    x0, x1 = xrange or (min(xs), max(xs))
+    y0, y1 = yrange or (min(ys), max(ys))
+    if x1 == x0:
+        x1 = x0 + 1
+    if y1 == y0:
+        y1 = y0 + 1
+
+    def X(v):
+        return pad_l + (v - x0) / (x1 - x0) * W
+
+    def Y(v):
+        t = (v - y0) / (y1 - y0)
+        return pad_t + (1 - t) * H if not inverted_y else pad_t + t * H
+
+    out = [f'<svg class="plot" viewBox="0 0 {w} {h}">']
+    for gx in [x0 + (x1 - x0) * i / 6 for i in range(7)]:
+        out.append(f'<line class="grid" x1="{X(gx):.1f}" y1="{pad_t}" '
+                   f'x2="{X(gx):.1f}" y2="{pad_t + H}"/>')
+        out.append(f'<text class="tick" x="{X(gx):.1f}" y="{h - 12}" '
+                   f'text-anchor="middle">{gx:g}</text>')
+    for gy in [y0 + (y1 - y0) * i / 5 for i in range(6)]:
+        out.append(f'<line class="grid" x1="{pad_l}" y1="{Y(gy):.1f}" '
+                   f'x2="{pad_l + W}" y2="{Y(gy):.1f}"/>')
+        out.append(f'<text class="tick" x="{pad_l - 7}" y="{Y(gy) + 3:.1f}" '
+                   f'text-anchor="end">{gy:g}</text>')
+    out.append(f'<rect x="{pad_l}" y="{pad_t}" width="{W}" height="{H}" '
+               f'fill="none" class="ax"/>')
+    out.append(f'<text class="tick" x="{pad_l + W / 2}" y="{h - 0}" '
+               f'text-anchor="middle">{xlabel}</text>')
+    for label, color, pts in series:
+        d = 'M' + 'L'.join(f'{X(x):.1f},{Y(y):.1f}' for x, y in pts)
+        out.append(f'<path d="{d}" fill="none" stroke="{color}" '
+                   f'stroke-width="2"/>')
+        if pts:
+            out.append(f'<circle cx="{X(pts[-1][0]):.1f}" '
+                       f'cy="{X(pts[-1][1]) if False else Y(pts[-1][1]):.1f}" '
+                       f'r="3" fill="{color}"/>')
+    lx = pad_l + 12
+    for i, (label, color, _) in enumerate(series):
+        ly = pad_t + 16 + i * 16
+        out.append(f'<circle cx="{lx}" cy="{ly - 3}" r="3" fill="{color}"/>')
+        out.append(f'<text class="legend" x="{lx + 9}" y="{ly}">{label}'
+                   f'</text>')
+    if ylabel:
+        out.append(f'<text class="tick" x="12" y="{pad_t + H / 2}" '
+                   f'text-anchor="middle" transform="rotate(-90 12,'
+                   f'{pad_t + H / 2})">{ylabel}</text>')
+    out.append('</svg>')
+    return ''.join(out)
+
+
+def validation_html():
+    d = _load_anchors()
+    cases = d.get('cases', [])
+    mach = [c['mach'] for c in cases]
+    cl = [c['cl'] for c in cases]
+    cd = [c['cd'] for c in cases]
+    p1 = _svg_xy([('CL', '#89e5d0', list(zip(mach, cl)))],
+                 xlabel='Mach', ylabel='CL', xrange=(0.78, 1.12))
+    p2 = _svg_xy([('CD', '#e5a389', list(zip(mach, cd)))],
+                 xlabel='Mach', ylabel='CD', xrange=(0.78, 1.12))
+    cp_series = []
+    if 'of_m08' in d:
+        cp_series.append(('OF upper', '#89e5d0', d['of_m08']['upper']))
+        cp_series.append(('OF lower', '#7fb3d5', d['of_m08']['lower']))
+    if 'panel_kt_m08' in d:
+        cp_series.append(('panel+KT upper', '#e5a389',
+                          d['panel_kt_m08']['upper']))
+        cp_series.append(('panel+KT lower', '#d5a37f',
+                          d['panel_kt_m08']['lower']))
+    p3 = _svg_xy(cp_series, xlabel='x/c', ylabel='Cp', inverted_y=True,
+                 xrange=(0, 1))
+    up_series = []
+    for key, label, color in [('of_m08', 'M0.8', '#89e5d0'),
+                              ('of_m09', 'M0.9', '#a389e5'),
+                              ('of_m95', 'M0.95', '#e5d389'),
+                              ('of_m1', 'M1.0', '#e58989'),
+                              ('of_m11', 'M1.1', '#89b5e5')]:
+        if key in d:
+            up_series.append((label, color, d[key]['upper']))
+    p4 = _svg_xy(up_series, xlabel='x/c', ylabel='Cp upper',
+                 inverted_y=True, xrange=(0, 1))
+    rows = ''.join(
+        f"<tr><td>M{c['mach']}</td><td>{c['cl']:.3f}</td>"
+        f"<td>{c['cd']:.4f}</td><td>shock@{c.get('shock_x', '?')}</td>"
+        f"<td>{c['solver']}</td><td>{c['note']}</td></tr>" for c in cases)
+    arows = ''.join(
+        f"<tr><td>{c.get('alpha', '')}</td><td>{c['cl']:.3f}</td>"
+        f"<td>{c['cd']:.4f}</td><td colspan=2>{c['note']}</td></tr>"
+        for c in d.get('alpha_sweep_m08', []))
+    leg = ''.join(
+        f"<tr><td>{c['case']}</td><td>{c.get('cd', c.get('cl', ''))}</td>"
+        f"<td colspan=3>{c['note']}</td></tr>"
+        for c in d.get('legacy', []))
+    notes = ''.join(f'<p class="subtle">· {n}</p>'
+                    for n in d.get('notes', []))
+    return f"""<html><head><title>wing3d · validation</title>
+<meta name="theme-color" content="#0c1117"><style>{{css}}</style></head><body>
+<header class="topbar"><div class="brand">wing3d<small>TRANSONIC ANCHORS · OPENFOAM</small></div>
+<div><a href="/">← Workbench</a></div></header>
+<div class="app-shell"><aside class="sidebar"><h1>Validation</h1>
+<div class="section-label"><span>DATASET</span></div>
+<p class="subtle">NACA0012 Euler slabs (rhoCentralFoam LTS, 12k cells) +
+legacy RANS. {len(cases)} transonic anchors, M0.8-M1.1.</p>
+<div class="section-label"><span>STATUS</span></div>
+<p><span class="status-pill">anchored</span></p>
+{notes}
+<a class="navlink" href="/">← Back to workbench</a></aside>
+<main><div class="workspace-heading"><h2>Transonic validation</h2></div>
+<div class="status-line"><span class="status-pill">openfoam</span>
+<span>NACA0012 quasi-2D Euler · shock bucket M0.8 → M1.1</span></div>
+<div class="metrics">
+<div class="metric"><span>ANCHORS</span><strong>{len(cases)}</strong><small>transonic cases</small></div>
+<div class="metric"><span>MACH RANGE</span><strong>0.8–1.1</strong><small>subsonic → supersonic</small></div>
+<div class="metric"><span>SHOCK</span><strong>x/c≈0.35</strong><small>stable location</small></div>
+<div class="metric"><span>ACKERET M1.1</span><strong>+12%</strong><small>CL 0.213 vs 0.19</small></div>
+</div>
+<div class="plot-panel"><div class="panel-heading"><h3>Lift bucket across Mach 1</h3>
+<span class="panel-index">01 / CL(M)</span></div>{p1}</div>
+<div class="plot-panel"><div class="panel-heading"><h3>Drag across Mach 1</h3>
+<span class="panel-index">02 / CD(M)</span></div>{p2}</div>
+<div class="plot-panel"><div class="panel-heading"><h3>M0.8: OpenFOAM vs panel+KT</h3>
+<span class="panel-index">03 / Cp</span></div>{p3}</div>
+<div class="plot-panel"><div class="panel-heading"><h3>Upper-surface shock march</h3>
+<span class="panel-index">04 / Cp(M)</span></div>{p4}</div>
+<div class="plot-panel"><div class="panel-heading"><h3>Anchor table</h3>
+<span class="panel-index">05 / data</span></div>
+<table class="val"><tr><th>MACH</th><th>CL</th><th>CD</th><th>SHOCK</th><th>SOLVER</th><th>NOTE</th></tr>
+{rows}</table></div>
+<div class="plot-panel"><div class="panel-heading"><h3>M0.8 alpha sweep (stall)</h3>
+<span class="panel-index">06 / data</span></div>
+<table class="val"><tr><th>ALPHA</th><th>CL</th><th>CD</th><th colspan=2>NOTE</th></tr>
+{arows}</table></div>
+<div class="plot-panel"><div class="panel-heading"><h3>Legacy validation</h3>
+<span class="panel-index">07 / data</span></div>
+<table class="val"><tr><th>CASE</th><th>VALUE</th><th colspan=3>NOTE</th></tr>
+{leg}</table></div>
+</main></div></body></html>"""
 
 PAGE = """<html><head><title>wing3d · 3D workbench</title><meta name="theme-color" content="#0c1117">
 <style>{css}</style></head><body>
@@ -96,6 +268,7 @@ PAGE = """<html><head><title>wing3d · 3D workbench</title><meta name="theme-col
 </form>
 <p class="subtle">Validation: sphere/cube/ellipsoid analytic + wing polar in
 tests3d/test_shapes.py. OpenFOAM comparison: cases/openfoam/.</p>
+<p><a class="navlink" href="/validation">Transonic anchors →</a></p>
 </aside>
 <main><div class="workspace-heading"><h2>3D visualization</h2></div>
 <div class="status-line"><span class="status-pill">ready</span><span>pick a case on the left</span></div>
@@ -189,6 +362,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
             self._html(PAGE.format(css=CSS))
+        elif self.path == '/validation':
+            self._html(validation_html().format(css=CSS))
         elif self.path.startswith('/img/'):
             self._file(os.path.join(OUT, self.path[5:]), 'image/png')
         elif self.path.startswith('/vtk/'):

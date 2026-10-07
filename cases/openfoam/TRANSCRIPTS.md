@@ -67,6 +67,51 @@ quasi-2D), container `oftrans`. AGARD-like case 1.
   Cpmin -1.05, no shock (KT is subsonic-only, expected).
   Gap to close with TSD: shock@0.35 + CL~0.4.
 
+## 6. NACA0012 M1.0 alpha=1.25deg Euler anchor (rhoCentralFoam LTS)
+
+Case: `cases/openfoam/caseM1` (cloned 12k mesh, U=347.2). Finished
+clean to t=0.3: **CL = 0.257, CD = 0.0265** (flat). Upper pocket
+Cpmin -0.80 with shock at **x/c ~ 0.35** (Cp -0.77 -> -0.47 ->
+-0.20, slightly more smeared than M0.8). Sonic freestream gives
+less suction headroom than M0.8 (Cpmin -1.27 there) hence lower CL.
+VERDICT: M1.0 ANCHOR SET (the TSD M1.0 target).
+
+## 7. NACA0012 M0.9 alpha=1.25deg Euler (rhoCentralFoam LTS)
+
+Case: `cases/openfoam/caseM09`. Converged (residuals to 0):
+**CL = 0.072, CD = 0.053**. DOUBLE SHOCK state: upper pocket
+Cpmin -0.76 AND lower pocket Cpmin -0.63, both shocking at
+x/c ~ 0.35-0.45. Near-symmetric pockets cancel lift (transonic
+lift bucket: 0.402 -> 0.072 -> 0.257 across M0.8/0.9/1.0).
+Physical (M0.9 lower surface goes supersonic even at low alpha).
+
+## 8. NACA0012 M0.8 alpha=4deg Euler (rhoCentralFoam LTS) -- SHOCK STALL
+
+Case: `cases/openfoam/caseA4`. **CL = 0.404, CD = 0.0415** (3
+consistent samples +-0.002). Pocket Cpmin -1.27 + shock at x/c
+~0.35 -- IDENTICAL pocket/shock to alpha=1.25deg (CL 0.402).
+Extra incidence goes into the shock, not lift: buffet boundary
+below 4deg at M0.8. (Runs die at the shock-formation transient
+t~0.1 -- captured state consistent 3x; needs hardening.)
+Links 2D section to the 3D wing alpha. (Accidental alpha=8deg
+run also gives CL 0.404 -- stall flat from 1.25deg through 8deg.)
+
+## 9. NACA0012 M1.1 alpha=1.25deg Euler (rhoCentralFoam LTS) -- SUPERSONIC
+
+Case: `cases/openfoam/caseM11`. **CL = 0.213, CD = 0.0219**.
+Ackeret theory: 4*alpha(rad)/sqrt(M^2-1) = 0.19. Measured +12%
+(Euler, coarse mesh). Upper expansion to Cp -0.66 + oblique
+shock x/c ~ 0.3-0.4; bow-shock LE (stagnation Cp 0.27, not 1.0).
+VERDICT: SUPERSONIC ANCHOR, theory-consistent.
+
+## 10. NACA0012 M0.95 alpha=1.25deg Euler (rhoCentralFoam LTS)
+
+Case: `cases/openfoam/caseM95`. Settles into +-0.001 limit cycle:
+**CL = 0.285, CD = 0.0294**. Single upper shock again (pocket
+Cpmin -0.90 at x/c ~0.33-0.40, lower mild -0.18) -- bucket
+recovering past M0.9 (lower pocket gone). Transonic CL curve:
+0.402 / 0.072 / 0.285 / 0.257 @ M0.8/0.9/0.95/1.0.
+
 ## Environment notes (this host)
 
 - Docker bind mounts broken (`Cannot allocate memory` on readdir);
