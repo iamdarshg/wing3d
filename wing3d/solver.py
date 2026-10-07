@@ -263,15 +263,52 @@ def wake_precompute(wakes):
                 owner=np.array(owner))
 
 
-def assemble(mesh, wakes, kutta_sign=+1.0, kutta_mode='potential'):
+def _te_extrapolation(mesh, wakes):
+    """Linear TE-edge extrapolation data per strip.
+
+    Returns list of (u, uu, wu, l, ll, wl) with uu/ll the chordwise
+    neighbors toward the LE (None if unavailable) and wu/wl the
+    extrapolation weights from panel centroids to the TE edge.
+    Uses structured meta when present, else neighbor search.
+    """
+    out = []
+    meta = getattr(mesh, 'meta', None)
+    C = mesh.centroid
+    if meta is not None and 'n_loop' in meta:
+        nl = meta['n_loop']
+        npl = nl - 1
+        te_x = [np.asarray(p)[0] for p in meta['te_points']]
+        for k, w in enumerate(wakes):
+            u, l = w.upper_te, w.lower_te
+            # structured layout: pid = j*npl+i; strip k == segment j
+            j = k if k < meta['n_span'] else None
+            uu = ll = None
+            wu = wl = 0.0
+            if j is not None:
+                uu, ll = j * npl + 1, j * npl + (npl - 2)
+                xte = te_x[j] if j < len(te_x) else 1.0
+                du = C[u][0] - C[uu][0]
+                dl = C[l][0] - C[ll][0]
+                # upper: x decreases toward LE so xu > xuu; lower likewise
+                wu = (xte - C[u][0]) / du if abs(du) > 1e-12 else 0.0
+                wl = (xte - C[l][0]) / dl if abs(dl) > 1e-12 else 0.0
+                wu = min(max(wu, 0.0), 2.0)
+                wl = min(max(wl, 0.0), 2.0)
+            out.append((u, uu, wu, l, ll, wl))
+        return out
+    # fallback: no extrapolation
+    for w in wakes:
+        out.append((w.upper_te, None, 0.0, w.lower_te, None, 0.0))
+    return out
+
+
+def assemble(mesh, wakes, kutta_sign=+1.0, kutta_mode='doublet'):
     """Geometry-only influence matrix A (N body + S kutta rows).
 
-    kutta_mode='potential' (default): exact potential-jump Kutta,
+    kutta_mode='potential': edge-extrapolated potential-jump Kutta,
         mu_wake = Phi_upper_TE - Phi_lower_TE (exterior potentials).
-        Linear in mu; strictly more accurate than the mu-difference
-        shortcut on coarse meshes.
-    kutta_mode='doublet': classic mu_wake = mu_upper_TE - mu_lower_TE
-        (times kutta_sign); kept for comparison.
+    kutta_mode='doublet' (default): classic mu_wake = mu_upper_TE -
+        mu_lower_TE; best forces on coarse meshes, TE less smooth.
     """
     n = mesh.npanels
     s = len(wakes)
@@ -307,11 +344,24 @@ def assemble(mesh, wakes, kutta_sign=+1.0, kutta_mode='potential'):
         # Exterior potential row = interior row + self jump (+1 on self).
         # Kutta: mu_w - (Phi_u - Phi_l) = 0 with Phi = Phi_inf + B.sigma
         # + C.mu; the B.sigma and Phi_inf parts go to kutta_rhs().
+        # Potentials are linearly extrapolated to the TE edge (centroid
+        # sampling under-reads the edge jump on coarse meshes).
+        te = _te_extrapolation(mesh, wakes)
         for k, w in enumerate(wakes):
-            u, l = w.upper_te, w.lower_te
-            A[n + k, :n] = -(Cint[u] - Cint[l])
-            A[n + k, u] -= 1.0
-            A[n + k, l] += 1.0
+            u, uu, wu, l, ll, wl = te[k]
+            # row = -[(1+wu)(Cu+eu) - wu(Cuu+euu) - (1+wl)(Cl+el) + wl(Cll+ell)]
+            row = -(1 + wu) * Cint[u] + (1 + wl) * Cint[l]
+            if uu is not None:
+                row += wu * Cint[uu]
+            if ll is not None:
+                row -= wl * Cint[ll]
+            A[n + k, :n] = row
+            A[n + k, u] -= (1 + wu)
+            A[n + k, l] += (1 + wl)
+            if uu is not None:
+                A[n + k, uu] += wu
+            if ll is not None:
+                A[n + k, ll] -= wl
             A[n + k, n + k] = 1.0
     else:
         raise ValueError('unknown kutta_mode')
@@ -319,15 +369,25 @@ def assemble(mesh, wakes, kutta_sign=+1.0, kutta_mode='potential'):
 
 
 def kutta_rhs(mesh, wakes, vinf, Brow):
-    """RHS known terms (Phi_inf + B sigma) for potential-Kutta rows."""
+    """RHS known terms for (extrapolated) potential-Kutta rows.
+
+    (1+wu)(Phi_inf+Bsgima)_u - wu(..)_uu - (1+wl)(..)_l + wl(..)_ll.
+    """
     V = np.asarray(vinf, dtype=float)
     sigma = (mesh.normal @ V)
     out = np.zeros(len(wakes))
+    te = _te_extrapolation(mesh, wakes)
+    C = mesh.centroid
     for k, w in enumerate(wakes):
-        u, l = w.upper_te, w.lower_te
-        phi_u = mesh.centroid[u] @ V + Brow[u] @ sigma
-        phi_l = mesh.centroid[l] @ V + Brow[l] @ sigma
-        out[k] = phi_u - phi_l
+        u, uu, wu, l, ll, wl = te[k]
+        def known(i):
+            return C[i] @ V + Brow[i] @ sigma
+        val = (1 + wu) * known(u) - (1 + wl) * known(l)
+        if uu is not None:
+            val -= wu * known(uu)
+        if ll is not None:
+            val += wl * known(ll)
+        out[k] = val
     return out, sigma
 
 
@@ -373,7 +433,7 @@ def _surface_gradient(mesh, phi):
 
 
 def solve(mesh, wakes, vinf, A=None, Brow=None, extra_rhs=None,
-          kutta_mode='potential'):
+          kutta_mode='doublet'):
     """Solve + surface flow. extra_rhs: transpiration source term (coupling)."""
     n = mesh.npanels
     s = len(wakes)
@@ -425,6 +485,16 @@ def solve(mesh, wakes, vinf, A=None, Brow=None, extra_rhs=None,
     vn = np.einsum('ij,ij->i', vel, mesh.normal)
     vel = vel - vn[:, None] * mesh.normal
     cp = 1.0 - np.sum(vel**2, axis=1) / vmag**2
+    # Kutta Cp: the finite-TE collocation produces equal-and-opposite Cp
+    # spikes on the upper/lower TE pair (dCpTE residual). By the Kutta
+    # condition ΔCp_TE = 0, replace each pair with its mean. Removes the
+    # spurious pressure-drag floor (~0.005) with negligible lift change.
+    if wakes:
+        for w in wakes:
+            iu, il = int(w.upper_te), int(w.lower_te)
+            m = 0.5 * (cp[iu] + cp[il])
+            cp[iu] = m
+            cp[il] = m
     return {'mu': mu, 'muw': muw, 'sigma': sigma, 'vel': vel, 'cp': cp,
             'A': A, 'Brow': Brow, 'vinf': V}
 

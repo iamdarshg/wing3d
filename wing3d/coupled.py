@@ -9,8 +9,14 @@ import numpy as np
 
 
 def trace_streamlines(mesh, vel, ds_factor=0.6, max_steps=400):
-    """Follow surface velocity from stagnation seeds. Returns list of
-    streamlines; each is a dict with panels, s, Ue arrays."""
+    """Follow surface velocity from STAGNATION seeds (full LE->TE tracks).
+
+    Seeds are low-speed (stagnation/attachment) panels; each streamline
+    marches downstream with the local velocity until it leaves the body,
+    stagnates, or repeats. This gives proper boundary-layer histories
+    (Thwaites must integrate from stagnation, not mid-chord fragments).
+    Returns list of streamlines + coverage mask.
+    """
     from scipy.spatial import cKDTree
     C = mesh.centroid
     tree = cKDTree(C)
@@ -19,11 +25,15 @@ def trace_streamlines(mesh, vel, ds_factor=0.6, max_steps=400):
     covered = np.zeros(n, dtype=bool)
     lines = []
     sizes = np.sqrt(mesh.area)
-    order = np.argsort(spd)  # start at stagnation, expand outward
-    for seed in order:
-        if covered[seed] and len(lines) > 4:
-            # still allow a few seeds for coverage, then rely on fill
-            pass
+    # stagnation threshold: slowest 5% (attachment line/stagnation region)
+    thresh = np.quantile(spd, 0.05)
+    seeds = np.where(spd <= thresh)[0]
+    # thin seeds spatially (avoid redundant neighbors)
+    kept = []
+    for s in seeds:
+        if all(np.linalg.norm(C[s] - C[k]) > 2.5 * sizes[s] for k in kept):
+            kept.append(int(s))
+    for seed in kept:
         panels, ss, ues = [], [], []
         i = int(seed)
         s = 0.0
@@ -45,9 +55,8 @@ def trace_streamlines(mesh, vel, ds_factor=0.6, max_steps=400):
             pnext = C[i] + d * ds
             dd, j = tree.query(pnext)
             if dd > 3.0 * sizes[i] or int(j) in seen:
-                # end of reachable surface (edge/wake/TE)
-                panels.append(int(j)) if dd <= 3.0 * sizes[i] else None
                 if dd <= 3.0 * sizes[i]:
+                    panels.append(int(j))
                     ss.append(s + ds)
                     ues.append(max(np.linalg.norm(vel[int(j)]), 1e-9))
                     covered[int(j)] = True
@@ -57,6 +66,37 @@ def trace_streamlines(mesh, vel, ds_factor=0.6, max_steps=400):
         if len(panels) >= 5:
             lines.append({'panels': np.array(panels),
                           's': np.array(ss), 'Ue': np.array(ues)})
+    # fill gaps: seed uncovered panels (short tracks for coverage only)
+    for seed in np.argsort(spd):
+        if covered[int(seed)]:
+            continue
+        panels, ss, ues = [], [], []
+        i = int(seed)
+        s = 0.0
+        seen = set()
+        for _ in range(60):
+            if i in seen:
+                break
+            seen.add(i)
+            v = vel[i]
+            sp = np.linalg.norm(v)
+            if sp < 1e-9:
+                break
+            panels.append(i)
+            ss.append(s)
+            ues.append(sp)
+            covered[i] = True
+            d = v / sp
+            ds = ds_factor * sizes[i]
+            dd, j = tree.query(C[i] + d * ds)
+            if dd > 3.0 * sizes[i] or int(j) in seen:
+                break
+            s += ds
+            i = int(j)
+        if len(panels) >= 5:
+            lines.append({'panels': np.array(panels),
+                          's': np.array(ss), 'Ue': np.array(ues),
+                          'fragment': True})
         if covered.all():
             break
     return lines, covered

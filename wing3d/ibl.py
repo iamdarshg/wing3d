@@ -20,8 +20,10 @@ def thwaites_cf_ell(lam):
 
 
 def michel_transition(Re_x):
-    # Re_theta at transition (Michel)
-    return 1.174 * (1.0 + 22400.0 / max(Re_x, 1.0) ** 0.625) * Re_x ** 0.46
+    # Re_theta at transition (Michel); guard Re_x=0 (stagnation) -> huge
+    # threshold (no immediate transition)
+    Rx = max(Re_x, 1.0)
+    return 1.174 * (1.0 + 22400.0 / Rx ** 0.625) * Rx ** 0.46
 
 
 def head_F(H1):
@@ -65,20 +67,27 @@ def solve_streamline(s, Ue, nu, Re_ref=1.0, x_tr_forced=None):
 
     # laminar start (stagnation-like): theta^2 = 0.075*nu*ds/Ue
     t2 = 0.075 * nu * max(ds[0], 1e-12) / Ue[0]
+    bubble = False
     for i in range(n):
         if i > 0:
             lam = t2 / max(nu, 1e-300) * dUe[max(i - 1, 0)]
             lam_arr[i] = lam
             if lam < -0.09:
-                i_sep = i
+                # laminar separation before transition: separation-induced
+                # transition (short bubble model -> turbulent from here)
+                bubble = True
+                i_tr = i
                 break
-            F = thwaites_rhs(lam)
+            # clamp to Thwaites validity range (explicit-Euler overshoot
+            # near stagnation otherwise collapses theta -> Cf ~ 1000)
+            lam_c = min(lam, 0.12)
+            F = thwaites_rhs(lam_c)
             t2 = max(t2 + F * nu / max(Ue[i], 1e-9) * ds[i], 1e-18)
         th = np.sqrt(max(t2, 1e-18))
         theta[i] = th
         Re_t = Ue[i] * th / max(nu, 1e-300)
-        ell = thwaites_cf_ell(lam_arr[i])
-        cf[i] = 2 * nu * ell / max(Ue[i] * th, 1e-300)
+        ell = thwaites_cf_ell(min(lam_arr[i], 0.12))
+        cf[i] = min(2 * nu * ell / max(Ue[i] * th, 1e-300), 0.02)
         H[i] = 2.2 if lam_arr[i] > -0.02 else 2.6
         dstar[i] = H[i] * th
         # Michel transition check
@@ -89,7 +98,7 @@ def solve_streamline(s, Ue, nu, Re_ref=1.0, x_tr_forced=None):
     else:
         return {'s': s, 'Ue': Ue, 'theta': theta, 'H': H, 'cf': cf,
                 'dstar': dstar, 'state': state, 'i_tr': n, 'i_sep': -1,
-                'separated': False}
+                'separated': False, 'bubble': False}
 
     # turbulent (Head) from transition with initial H
     H1 = 5.0
@@ -117,4 +126,4 @@ def solve_streamline(s, Ue, nu, Re_ref=1.0, x_tr_forced=None):
             break
     return {'s': s, 'Ue': Ue, 'theta': theta, 'H': H, 'cf': cf,
             'dstar': dstar, 'state': state, 'i_tr': i_tr, 'i_sep': i_sep,
-            'separated': i_sep >= 0}
+            'separated': (i_sep >= 0) or bubble, 'bubble': bubble}
