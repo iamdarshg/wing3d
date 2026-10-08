@@ -107,8 +107,11 @@ Bow shock (LE Cp +0.9/+1.0, not 1.0) + expansion to -0.6 both
 sides + oblique TE recompression (smeared on coarse mesh).
 Textbook supersonic pattern. High wave drag (blunt 12%) physical.
 
-## 10. NACA0012 M0.95 anchor -- WITHDRAWN (same audit: M0.8 alpha=8).
-Reruns with verified inflow in progress.
+## 10. NACA0012 M0.95 anchor -- WITHDRAWN on first pass (M0.8a8),
+then TRUE rerun first showed 0.285 (transient slosh artifact);
+clean rerun to t=0.3: **CL = 0.083, CD = 0.065** (flat).
+DOUBLE pocket (upper -0.76, lower -0.65), shocks x/c ~0.55-0.65.
+Coherent bucket with M0.885 (double-shock@0.4).
 
 ## 10b. NACA0012 M1.0 alpha=1.25 TRUE (verified N2 inflow, AR1.6)
 

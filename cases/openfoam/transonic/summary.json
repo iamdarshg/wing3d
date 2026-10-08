@@ -31,6 +31,16 @@
   },
   {
    "mach": 0.8,
+   "alpha": 1.25,
+   "cl": 0.0686,
+   "cd": 0.0485,
+   "shock_x": 0.35,
+   "cpmin_up": -1.27,
+   "solver": "rhoCentralFoam",
+   "note": "TRUE rerun N2, clean End"
+  },
+  {
+   "mach": 0.8,
    "alpha": 4.0,
    "cl": 0.2187,
    "cd": 0.0464,
@@ -62,12 +72,13 @@
   {
    "mach": 0.95,
    "alpha": 1.25,
-   "cl": 0.285,
-   "cd": 0.0294,
-   "shock_x": 0.35,
-   "cpmin_up": -0.9,
+   "cl": 0.083,
+   "cd": 0.065,
+   "shock_x": 0.6,
+   "cpmin_up": -0.76,
+   "cpmin_lo": -0.65,
    "solver": "rhoCentralFoam",
-   "note": "N2-verified, limit cycle"
+   "note": "TRUE rerun N2 clean End; 0.285 was transient artifact"
   },
   {
    "mach": 1.0,
@@ -87,7 +98,7 @@
    "shock_x": 0.7,
    "cpmin_up": -0.6,
    "solver": "rhoCentralFoam",
-   "note": "N2-verified supersonic, bow+oblique"
+   "note": "N2-verified supersonic"
   }
  ],
  "legacy": [
