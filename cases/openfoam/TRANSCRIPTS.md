@@ -111,14 +111,15 @@ no-op seds), so their "M0.95/M1.0/M1.1/a4" labels were wrong --
 denormalized they all read CL~0.40 (M0.8a8 stall, consistent).
 Also caseCentral/0/U was alpha=8 all along: the M0.8-alpha1.25
 anchor NEVER EXISTED. Standing (inflow-verified): M0.8a0,
-M0.9a1.25 only. Gas note: biconic janaf thermo is N2 (R=296.8),
+M0.8a4-true (0.219), M0.8a8 (0.404), M0.9a1.25 (0.072) + Harris
+tunnel truth (cl 0.377 @M0.75a2). Gas note: biconic janaf thermo is N2 (R=296.8),
 so old runs labeled with air sound speed sit ~0.015 low in Mach
 and +3.4% in CL/CD normalization; corrected where cited.
 `wing3d/makecase.py` (N2-consistent U/rhoInf) + `of_verify.py`
 (Rgas arg) prevent recurrence. Fresh-start only (restarts across
 alpha read stale BCs from time dirs).
 
-## 11. Complex-geometry campaign (wing3d panel + wakes, this study)
+## 12. Complex-geometry campaign (wing3d panel + wakes, this study)
 
 Waked multi-surface configs (`wing3d/shapes.py`: `build_f16_waked`,
 `build_a330`, `build_shuttle`) with wake clipping + buried-panel force
@@ -159,6 +160,19 @@ physical drag shrinks). Mach sweep (KT vs PG): <5% to M0.5,
 +5.6% M0.6, +11% M0.7, +15% M0.75. Worst speed: M>=0.65
 (KT invalid, needs TSD/OF). Overall weakest: transonic
 M0.65-1.1 (no wing3d predictor) + low-Re bubbles.
+
+## 13. Harris tunnel truth (NASA TM-81927, OCR'd tables)
+
+NACA0012 M0.749 alpha=1.99deg Re=2.0e6 (`transonic/harris.py`):
+upper shock between x=0.50 (Cp -1.187) and x=0.55 (Cp -0.340),
+Cpmin -1.23, integrated cl = 0.377. Use as transonic truth for
+pocket/shock/CL (no mesh issues). vs our quasi-2D OF: shapes
+match (shock@0.35-0.4 vs 0.52 -- ours forward, coarse-LE effect),
+levels ~1/3 (LE starvation; finite-wing AR1.6 contamination on
+early slabs + coarse LE). O-grid attempt (exact 2D, smooth LE)
+documented in transonic/ogrid.py -- blocked on block-corner
+non-orthogonality (80 deg faces) + central/SIMPLE blowup; needs
+edgeGrading rework or C-grid follow-up (spec'd, not built).
 
 ## Environment notes (this host)
 
