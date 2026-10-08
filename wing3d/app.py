@@ -179,6 +179,24 @@ def validation_html():
             up_series.append((label, color, d[key]['upper']))
     p4 = _svg_xy(up_series, xlabel='x/c', ylabel='Cp upper',
                  inverted_y=True, xrange=(0, 1))
+    import math as _math
+    re_rows = d.get('re_sweep', {}).get('rows', [])
+    p5 = ''
+    if re_rows:
+        ours = [(_math.log10(r['Re']), r['CD']) for r in re_rows]
+        tru = [(_math.log10(r['Re']), r['CD_truth']) for r in re_rows]
+        p5 = _svg_xy([('wing3d CD', '#89e5d0', ours),
+                      ('Abbott est', '#e5a389', tru)],
+                     xlabel='log10 Re', ylabel='CD')
+    ms_rows = d.get('mach_sweep', {}).get('rows', [])
+    p6 = ''
+    if ms_rows:
+        errs = [(r['M'], r['err']) for r in ms_rows]
+        p6 = _svg_xy([('KT vs PG err %', '#e5d389', errs)],
+                     xlabel='Mach', ylabel='err %')
+    fails = ''.join(
+        f"<tr><td>{f['gap']}</td><td>{f['status']}</td></tr>"
+        for f in d.get('failing_points', []))
     rows = ''.join(
         f"<tr><td>M{c['mach']}</td><td>{c['cl']:.3f}</td>"
         f"<td>{c['cd']:.4f}</td><td>shock@{c.get('shock_x', '?')}</td>"
@@ -234,6 +252,24 @@ legacy RANS. {len(cases)} transonic anchors, M0.8-M1.1.</p>
 <span class="panel-index">07 / data</span></div>
 <table class="val"><tr><th>CASE</th><th>VALUE</th><th colspan=3>NOTE</th></tr>
 {leg}</table></div>
+<div class="plot-panel"><div class="panel-heading"><h3>Transonic predictor (M0.65–1.1)</h3>
+<span class="panel-index">08 / surrogate</span></div>
+<form action="/predict" method="get" style="padding:16px 18px;display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+<div><label class="field-label" for="pm">Mach</label>
+<input name="M" id="pm" type="number" value="0.9" step="any" style="width:110px"></div>
+<div><label class="field-label" for="pa">Alpha (deg)</label>
+<input name="alpha" id="pa" type="number" value="1.25" step="any" style="width:110px"></div>
+<div><button class="quiet" type="submit">Predict</button></div>
+<p class="subtle">Empirical surrogate over OF anchors. NaN outside M0.8–1.1 / α0–8.</p>
+</form></div>
+<div class="plot-panel"><div class="panel-heading"><h3>Re sweep: drag vs truth</h3>
+<span class="panel-index">09 / CD(Re)</span></div>{p5}</div>
+<div class="plot-panel"><div class="panel-heading"><h3>KT compressibility error vs PG</h3>
+<span class="panel-index">10 / KT(M)</span></div>{p6}</div>
+<div class="plot-panel"><div class="panel-heading"><h3>Main failing points</h3>
+<span class="panel-index">11 / gaps</span></div>
+<table class="val"><tr><th>GAP</th><th>STATUS</th></tr>
+{fails}</table></div>
 </main></div></body></html>"""
 
 PAGE = """<html><head><title>wing3d · 3D workbench</title><meta name="theme-color" content="#0c1117">
@@ -364,6 +400,36 @@ class Handler(BaseHTTPRequestHandler):
             self._html(PAGE.format(css=CSS))
         elif self.path == '/validation':
             self._html(validation_html().format(css=CSS))
+        elif self.path.startswith('/predict'):
+            import urllib.parse as _up
+            q = _up.parse_qs(_up.urlsplit(self.path).query)
+            try:
+                M = float(q.get('M', ['0.9'])[0])
+            except Exception:
+                M = 0.9
+            try:
+                al = float(q.get('alpha', ['1.25'])[0])
+            except Exception:
+                al = 1.25
+            from wing3d.transonic import predict as _predict
+            p = _predict(M, al)
+            body = (f"<p>Mach {M} alpha {al} deg: CL={p['CL']:.3f} "
+                    f"CD={p['CD']:.4f} shock={p['shock_x']} "
+                    f"Cpmin={p['cpmin_up']} [{p['source']}]</p>")
+            self._html(f"""<html><head><title>prediction</title>
+<style>{{css}}</style></head><body>
+<header class="topbar"><div class="brand">wing3d<small>PREDICTOR</small></div>
+<div><a href="/validation">← Validation</a></div></header>
+<main style="padding:28px 30px"><div class="metrics">
+<div class="metric"><span>CL</span><strong>{p['CL']:.3f}</strong>
+<small>transonic surrogate</small></div>
+<div class="metric"><span>CD</span><strong>{p['CD']:.4f}</strong>
+<small>transonic surrogate</small></div>
+<div class="metric"><span>SHOCK</span><strong>{p['shock_x']}</strong>
+<small>x/c upper</small></div>
+<div class="metric"><span>SOURCE</span><strong style="font-size:15px">{p['source']}</strong>
+<small>model behind numbers</small></div>
+</div>{body}</main></body></html>""".format(css=CSS))
         elif self.path.startswith('/img/'):
             self._file(os.path.join(OUT, self.path[5:]), 'image/png')
         elif self.path.startswith('/vtk/'):

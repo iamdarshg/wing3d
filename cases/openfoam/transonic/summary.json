@@ -3326,5 +3326,162 @@
     -0.0335
    ]
   ]
+ },
+ "re_sweep": {
+  "note": "NACA0012 AR6 a=4deg viscous-coupled; truth = Abbott 2D + induced (approx)",
+  "rows": [
+   {
+    "Re": 100000.0,
+    "CL": 0.3777,
+    "CD": 0.02494,
+    "CD_truth": 0.0275
+   },
+   {
+    "Re": 300000.0,
+    "CL": 0.3826,
+    "CD": 0.02075,
+    "CD_truth": 0.0195
+   },
+   {
+    "Re": 1000000.0,
+    "CL": 0.389,
+    "CD": 0.02021,
+    "CD_truth": 0.017
+   },
+   {
+    "Re": 3000000.0,
+    "CL": 0.3847,
+    "CD": 0.01939,
+    "CD_truth": 0.016
+   },
+   {
+    "Re": 10000000.0,
+    "CL": 0.3814,
+    "CD": 0.01868,
+    "CD_truth": 0.0145
+   }
+  ]
+ },
+ "mach_sweep": {
+  "note": "panel+KT CL vs PG theory, NACA0012 AR6 a=4deg",
+  "rows": [
+   {
+    "M": 0.0,
+    "CL": 0.3687,
+    "err": 0.0
+   },
+   {
+    "M": 0.2,
+    "CL": 0.3782,
+    "err": 0.5
+   },
+   {
+    "M": 0.4,
+    "CL": 0.4112,
+    "err": 2.2
+   },
+   {
+    "M": 0.5,
+    "CL": 0.4427,
+    "err": 4.0
+   },
+   {
+    "M": 0.6,
+    "CL": 0.4866,
+    "err": 5.6
+   },
+   {
+    "M": 0.65,
+    "CL": 0.5257,
+    "err": 8.3
+   },
+   {
+    "M": 0.7,
+    "CL": 0.5726,
+    "err": 10.9
+   },
+   {
+    "M": 0.75,
+    "CL": 0.6387,
+    "err": 14.6
+   }
+  ]
+ },
+ "failing_points": [
+  {
+   "gap": "transonic M0.65-1.1 wing3d predictor",
+   "status": "surrogate live (empirical); TSD-nonlinear parked"
+  },
+  {
+   "gap": "high-Re drag +21-29% (CDp offset 0.005)",
+   "status": "decomposed; TE/Kutta structural"
+  },
+  {
+   "gap": "low-Re bubble loss (-9%)",
+   "status": "Horton modeled; needs burst validation"
+  },
+  {
+   "gap": "KT breaks M>0.65 (+8-15%)",
+   "status": "documented; surrogate covers"
+  }
+ ],
+ "mach_sweep_full": {
+  "note": "KT to Mach 1.0 at a=1.25 (sectional wing); KT garbage >=0.95, surrogate covers 0.8-1.1",
+  "rows": [
+   {
+    "M": 0.5,
+    "KT": 0.1381,
+    "PG": 0.1337,
+    "surr": null
+   },
+   {
+    "M": 0.65,
+    "KT": 0.1631,
+    "PG": 0.1524,
+    "surr": null
+   },
+   {
+    "M": 0.7,
+    "KT": 0.177,
+    "PG": 0.1622,
+    "surr": null
+   },
+   {
+    "M": 0.75,
+    "KT": 0.1962,
+    "PG": 0.1751,
+    "surr": null
+   },
+   {
+    "M": 0.8,
+    "KT": 0.225,
+    "PG": 0.193,
+    "surr": 0.402
+   },
+   {
+    "M": 0.85,
+    "KT": 0.2729,
+    "PG": 0.2199,
+    "surr": 0.237
+   },
+   {
+    "M": 0.9,
+    "KT": 0.3722,
+    "PG": 0.2657,
+    "surr": 0.072
+   },
+   {
+    "M": 0.95,
+    "KT": 0.7465,
+    "PG": 0.3709,
+    "surr": 0.285
+   },
+   {
+    "M": 1.0,
+    "KT": -0.0001,
+    "PG": null,
+    "surr": 0.257
+   }
+  ]
  }
 }
