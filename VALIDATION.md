@@ -57,12 +57,15 @@ the UI (`/validation`) and `cases/openfoam/transonic/summary.json`.
 | M | alpha | CL | CD | Shock | Note |
 |---|---|---|---|---|---|
 | 0.8 | 0 deg | 0.0003 | 0.047 | symmetric | symmetry check; ~0.04 spurious floor |
-| 0.8 | 1.25 deg | — | — | — | NO DATA (anchor never existed; rerun pending) |
+| 0.8 | 1.25 deg | 0.069 | 0.049 | x/c 0.35 | TRUE rerun (LL 0.074, -7%) |
 | 0.8 | 4 deg | 0.219 | 0.046 | x/c 0.3-0.43, Cpmin -0.96 | TRUE rerun, verified inflow |
 | 0.8 | 8 deg | 0.404 | 0.0415 | x/c 0.35, Cpmin -1.27 | 5 consistent runs |
-| 0.9 | 1.25 deg | 0.072 | 0.053 | double shock | lift bucket |
+| 0.885 | 1.25 deg | 0.070 | 0.051 | double shock | gas-corrected, LL -13% |
+| 0.95 | 1.25 deg | 0.083 | 0.065 | double shock@0.6 | TRUE rerun (0.285 was transient) |
+| 1.0 | 1.25 deg | 0.079 | 0.077 | upper x/c 0.8, Cpmin -0.80 | M1.0 TARGET anchor |
+| 1.1 | 1.25 deg | 0.053 | 0.103 | bow + oblique | supersonic, N2-verified |
 | 0.75 | 2 deg (Harris tunnel) | 0.377 | — | x/c 0.5-0.55 | transonic truth (no mesh issues) |
-| (0.95/1.0/1.1 withdrawn 2026-10-08: ran M0.8a8 mislabeled; reruns pending) | | | | | |
+| (All OpenFOAM rows: finite-wing AR1.6 slabs, N2-consistent, LL-validated) | | | | | |
 
 Caveats: Euler (no boundary layers); coarse mesh (no grid-convergence
 bars yet; spurious drag floor ~0.04 at M0.8); rhoSimpleFoam+upwind
