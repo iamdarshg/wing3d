@@ -25,10 +25,11 @@ def parse_mag(path):
 
 if __name__ == '__main__':
     root, M, alpha = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
+    Rgas = float(sys.argv[4]) if len(sys.argv) > 4 else 287.0
     import numpy as np
     U = parse_field(root + '/0/U', 'U')
     mag = parse_mag(root + '/system/controlDict')
-    a_inf = np.sqrt(1.4 * 287.0 * 300.0)
+    a_inf = np.sqrt(1.4 * Rgas * 300.0)
     Uexp = M * a_inf
     ang = np.degrees(np.arctan2(U[2], U[0]))
     ok = True

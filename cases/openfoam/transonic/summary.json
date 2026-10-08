@@ -21,25 +21,63 @@
  ],
  "cases": [
   {
-   "alpha": 1.25,
-   "cd": 0.0414,
-   "cl": 0.402,
-   "cpmin_up": -1.27,
    "mach": 0.8,
-   "note": "upper pocket + crisp shock (verified inflow)",
-   "shock_x": 0.35,
-   "solver": "rhoCentralFoam"
+   "alpha": 0.0,
+   "cl": 0.0003,
+   "cd": 0.0474,
+   "shock_x": null,
+   "solver": "rhoCentralFoam",
+   "note": "symmetric (verified)"
   },
   {
+   "mach": 0.8,
+   "alpha": 4.0,
+   "cl": 0.2187,
+   "cd": 0.0464,
+   "shock_x": 0.35,
+   "cpmin_up": -0.96,
+   "solver": "rhoCentralFoam",
+   "note": "TRUE rerun N2"
+  },
+  {
+   "mach": 0.8,
+   "alpha": 8.0,
+   "cl": 0.404,
+   "cd": 0.0415,
+   "shock_x": 0.35,
+   "cpmin_up": -1.27,
+   "solver": "rhoCentralFoam",
+   "note": "5x consistent"
+  },
+  {
+   "mach": 0.885,
    "alpha": 1.25,
-   "cd": 0.053,
-   "cl": 0.072,
-   "cpmin_lo": -0.63,
-   "cpmin_up": -0.76,
-   "mach": 0.9,
-   "note": "double shock, lift bucket",
+   "cl": 0.0696,
+   "cd": 0.0512,
    "shock_x": 0.4,
-   "solver": "rhoCentralFoam"
+   "cpmin_up": -0.74,
+   "solver": "rhoCentralFoam",
+   "note": "gas-corrected ex-M0.9"
+  },
+  {
+   "mach": 0.95,
+   "alpha": 1.25,
+   "cl": 0.285,
+   "cd": 0.0294,
+   "shock_x": 0.35,
+   "cpmin_up": -0.9,
+   "solver": "rhoCentralFoam",
+   "note": "N2-verified, limit cycle"
+  },
+  {
+   "mach": 1.0,
+   "alpha": 1.25,
+   "cl": 0.079,
+   "cd": 0.077,
+   "shock_x": 0.8,
+   "cpmin_up": -0.72,
+   "solver": "rhoCentralFoam",
+   "note": "N2-verified, aft shock"
   }
  ],
  "legacy": [

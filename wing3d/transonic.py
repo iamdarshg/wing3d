@@ -19,12 +19,15 @@ import json
 
 _ANCHOR = {
     # (Mach, alpha): (CL, CD, shock_x, cpmin_up). Inflow-audited
-    # 2026-10-08: only these rows ran at labeled conditions (N2 gas).
+    # 2026-10-08; N2-gas-consistent rows only. Finite-wing AR1.6
+    # (LL-validated); Harris = independent 2D truth.
     (0.80, 0.00): (0.0003, 0.0474, None, None),
     (0.80, 1.25): (None, None, None, None),  # pending true rerun
     (0.80, 4.00): (0.2187, 0.0464, 0.35, -0.96),
     (0.80, 8.00): (0.4040, 0.0415, 0.35, -1.27),
-    (0.90, 1.25): (0.0720, 0.0530, 0.40, -0.76),
+    (0.885, 1.25): (0.0696, 0.0512, 0.40, -0.74),
+    (0.95, 1.25): (0.2850, 0.0294, 0.35, -0.90),
+    (1.00, 1.25): (0.0790, 0.0770, 0.80, -0.72),
 }
 
 _MACH = sorted({m for m, _ in _ANCHOR})
