@@ -78,6 +78,16 @@
    "cpmin_up": -0.72,
    "solver": "rhoCentralFoam",
    "note": "N2-verified, aft shock"
+  },
+  {
+   "mach": 1.1,
+   "alpha": 1.25,
+   "cl": 0.0533,
+   "cd": 0.103,
+   "shock_x": 0.7,
+   "cpmin_up": -0.6,
+   "solver": "rhoCentralFoam",
+   "note": "N2-verified supersonic, bow+oblique"
   }
  ],
  "legacy": [

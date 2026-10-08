@@ -100,8 +100,23 @@ narrative void -- it compared alpha=8 with itself).
 ## 9. NACA0012 M1.1 anchor -- WITHDRAWN (inflow audit 2026-10-08:
 ran M0.8 alpha=8, misnormalized; the "Ackeret agreement" is void)
 
+## 9b. NACA0012 M1.1 alpha=1.25 TRUE (verified N2 inflow, AR1.6)
+
+Case: `cases/openfoam/caseM11v`. Flat CL=0.053, CD=0.103.
+Bow shock (LE Cp +0.9/+1.0, not 1.0) + expansion to -0.6 both
+sides + oblique TE recompression (smeared on coarse mesh).
+Textbook supersonic pattern. High wave drag (blunt 12%) physical.
+
 ## 10. NACA0012 M0.95 anchor -- WITHDRAWN (same audit: M0.8 alpha=8).
 Reruns with verified inflow in progress.
+
+## 10b. NACA0012 M1.0 alpha=1.25 TRUE (verified N2 inflow, AR1.6)
+
+Case: `cases/openfoam/caseM10v` (makecase protocol). Flat
+CL=0.079, CD=0.077 at t=0.16. DOUBLE pocket (upper Cpmin -0.72,
+lower -0.62) with shock at x/c ~0.75-0.85 (aft shock: sonic
+pocket extends far back at M1.0). High wave drag physical.
+Shock march: 0.35 (M0.8) -> 0.4 (M0.9) -> 0.8 (M1.0).
 
 ## 11. DATA INTEGRITY AUDIT 2026-10-08 (READ THIS BEFORE CITING)
 
