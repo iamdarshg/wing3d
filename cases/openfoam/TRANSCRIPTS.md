@@ -134,13 +134,25 @@ Shuttle-orbiter-like (approach): a=0/5/10/15 -> CL
 0.00/0.18/0.34/0.45. No vortex-lift break (panel stays attached;
 real orbiter gets LE-vortex lift then stalls). L/D at 10deg:
 10.4 inviscid vs published orbiter ~4-5 (no base/flap/gear drag
-here -- documented 2x gap).
+here -- documented 2x gap). Polhamus suction-analogy correction
+(`forces.polhamus_vortex_lift`, Kv=pi): +0.02/+0.09/+0.20 at
+5/10/15deg -> CL 0.20/0.43/0.66, toward orbiter vortex-lifted
+values (drag increment not modeled -- L/D still overstated).
 
 RUNTIMES (this host): wing3d complex config assemble 7-16 s (once)
 + solve 4-16 s per alpha point. OpenFOAM: car RANS-SST ~4 min,
 central Euler 12k ~10-19 min, wing RANS 172k ~30+ min (mesh-limited).
 Panel ~30-70x faster per point at inviscid fidelity. C-kernel port
 scoped separately (fused panel_rows, est. another 3-5x).
+
+WORST-REGIME VERDICT (Re + speed sweeps, fixed IBL, 2026-10-08):
+Re sweep (NACA0012 AR6 a=4, vs Abbott): 1e5 -> -13% (UNDER:
+bubble loss missing -- worst PHYSICS), 3e5 -> +12%, 1e6 -> +21%,
+3e6 -> +21%, 1e7 -> +26% (worst MAGNITUDE: offset dominates as
+physical drag shrinks). Mach sweep (KT vs PG): <5% to M0.5,
++5.6% M0.6, +11% M0.7, +15% M0.75. Worst speed: M>=0.65
+(KT invalid, needs TSD/OF). Overall weakest: transonic
+M0.65-1.1 (no wing3d predictor) + low-Re bubbles.
 
 ## Environment notes (this host)
 

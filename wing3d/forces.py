@@ -62,13 +62,8 @@ def spanwise_loading(mesh, cp, vinf, strips_fn, rho=1.0):
     return rows
 
 
-def trefftz_cd(cl_span, y_span, vmag=1.0):
-    """Induced drag from spanwise cl via Glauert Fourier fit (e <= 1)."""
-    y = np.asarray(y_span, dtype=float)
-    cl = np.asarray(cl_span, dtype=float)
-    b = y.max() - y.min()
-    theta = np.arccos(np.clip(2 * (y - y.min()) / max(b, 1e-300) - 1, -1, 1))
-def trefftz_cd(cl_span, y_span, chord_span):    """Induced drag from spanwise cl via Glauert Fourier fit (e <= 1).
+def trefftz_cd(cl_span, y_span, chord_span):
+    """Induced drag from spanwise cl via Glauert Fourier fit (e <= 1).
 
     Fits Gamma(y)/(b*V) = sum A_n sin(n*theta) and returns
     CDi = pi*AR*sum(n*A_n^2)/2 with the Oswald efficiency.
