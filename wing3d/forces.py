@@ -68,8 +68,7 @@ def trefftz_cd(cl_span, y_span, vmag=1.0):
     cl = np.asarray(cl_span, dtype=float)
     b = y.max() - y.min()
     theta = np.arccos(np.clip(2 * (y - y.min()) / max(b, 1e-300) - 1, -1, 1))
-def trefftz_cd(cl_span, y_span, chord_span):
-    """Induced drag from spanwise cl via Glauert Fourier fit (e <= 1).
+def trefftz_cd(cl_span, y_span, chord_span):    """Induced drag from spanwise cl via Glauert Fourier fit (e <= 1).
 
     Fits Gamma(y)/(b*V) = sum A_n sin(n*theta) and returns
     CDi = pi*AR*sum(n*A_n^2)/2 with the Oswald efficiency.
@@ -90,3 +89,20 @@ def trefftz_cd(cl_span, y_span, chord_span):
     CL = float(np.pi * AR * A[0] / 2)
     e = float(CL ** 2 / max(np.pi * AR * CDi, 1e-300)) if CDi > 0 else float('nan')
     return {'CDi': CDi, 'CL': CL, 'e': e, 'A': A}
+
+
+def polhamus_vortex_lift(alpha_deg, AR, Kv=None):
+    """Polhamus suction-analogy LE-vortex lift increment for sharp-edge
+    deltas (e.g. shuttle orbiter at approach alpha).
+
+    CLv = Kv * sin^2(alpha) * cos(alpha), Kv ~ pi (slender-delta
+    estimate; Lamar charts refine by AR/sweep). ADD to attached
+    (panel) lift. Drag: vortex lift comes with its own induced cost
+    (not modeled here -- add Trefftz/measured increment separately).
+    Panel alone misses this (stays attached, no vortex) hence
+    underpredicts delta lift above ~8deg.
+    """
+    a = float(np.radians(alpha_deg))
+    Kv = np.pi if Kv is None else float(Kv)
+    clv = Kv * np.sin(a) ** 2 * np.cos(a)
+    return {'CLv': float(clv), 'Kv': float(Kv)}

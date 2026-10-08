@@ -320,21 +320,49 @@ def assemble(mesh, wakes, kutta_sign=+1.0, kutta_mode='doublet'):
     A = np.zeros((n + s, n + s))
     Brow = np.zeros((n, n))  # source potential rows (for RHS variants)
     Cint = np.zeros((n, n))  # interior doublet rows (reuse for Kutta)
-    for i in range(n):
-        p = C[i]
-        om = _solid_angle_rows(p, pc['fan'], pc['fmask'])
-        # Interior limit: van Oosterom-Strackee solid angle -> +2π on the
-        # inner side, so the doublet self-term is C_ii = -1/2 (Katz & Plotkin).
-        om[i] = 2 * np.pi
-        Cint[i] = -om / (4 * np.pi)
-        A[i, :n] = Cint[i]
-        b = _source_pot_rows(p, pc['qp'], pc['qw'], mesh.area, size,
-                             self_idx=i, self_verts=Vv[i])
-        Brow[i] = b
-        if wc is not None:
-            omw = _solid_angle_rows(p, wc['fan'], wc['fmask'])
-            for k in range(s):
-                A[i, n + k] = -omw[wc['owner'] == k].sum() / (4 * np.pi)
+    try:
+        from .ckernels import (_C_OK, solid_angle_block, source_pot_block)
+        use_c = _C_OK
+    except Exception:
+        use_c = False
+    if use_c:
+        cent = _centroids(pc['qp'], pc['qw'])
+        BLK = 256
+        for a0 in range(0, n, BLK):
+            sl = slice(a0, min(a0 + BLK, n))
+            Pb = np.ascontiguousarray(C[sl])
+            om = solid_angle_block(Pb, pc['fan'], pc['fmask'])
+            for k, i in enumerate(range(a0, min(a0 + BLK, n))):
+                om[k, i] = 2 * np.pi
+                Cint[i] = -om[k] / (4 * np.pi)
+                A[i, :n] = Cint[i]
+            b = source_pot_block(Pb, pc['qp'], pc['qw'], mesh.area, size,
+                                 cent)
+            for k, i in enumerate(range(a0, min(a0 + BLK, n))):
+                b[k, i] = _self_source_pot(C[i], Vv[i])
+                Brow[i] = b[k]
+            if wc is not None:
+                omw = solid_angle_block(Pb, wc['fan'], wc['fmask'])
+                own = wc['owner']
+                for k, i in enumerate(range(a0, min(a0 + BLK, n))):
+                    for kk in range(s):
+                        A[i, n + kk] = -omw[k][own == kk].sum() / (4 * np.pi)
+    else:
+        for i in range(n):
+            p = C[i]
+            om = _solid_angle_rows(p, pc['fan'], pc['fmask'])
+            # Interior limit: van Oosterom-Strackee solid angle -> +2π on the
+            # inner side, so the doublet self-term is C_ii = -1/2 (Katz & Plotkin).
+            om[i] = 2 * np.pi
+            Cint[i] = -om / (4 * np.pi)
+            A[i, :n] = Cint[i]
+            b = _source_pot_rows(p, pc['qp'], pc['qw'], mesh.area, size,
+                                 self_idx=i, self_verts=Vv[i])
+            Brow[i] = b
+            if wc is not None:
+                omw = _solid_angle_rows(p, wc['fan'], wc['fmask'])
+                for k in range(s):
+                    A[i, n + k] = -omw[wc['owner'] == k].sum() / (4 * np.pi)
     if kutta_mode == 'doublet':
         for k, w in enumerate(wakes):
             A[n + k, w.upper_te] = -kutta_sign
@@ -460,22 +488,59 @@ def solve(mesh, wakes, vinf, A=None, Brow=None, extra_rhs=None,
     wc = wake_precompute(wakes)
     C = mesh.centroid
     size = np.sqrt(mesh.area)
+    try:
+        from .ckernels import (_C_OK as _CV_OK, source_vel_block,
+                               loop_vel_block)
+        use_cv = _CV_OK
+    except Exception:
+        use_cv = False
     vel = np.zeros((n, 3))
     # Velocity assembly consistent with V = -grad Phi above: negate the
     # -gradient kernel sums.
-    for i in range(n):
-        p = C[i]
-        v = V.copy()
-        v -= (sigma[:, None] * _source_vel_rows(
-            p, pc['qp'], pc['qw'], mesh.area, size,
-            self_idx=i, normal=mesh.normal[i])).sum(axis=0)
-        v -= (mu[:, None] * _loop_vel_rows(p, pc['ed'], pc['emask'])).sum(axis=0)
+    if use_cv:
+        BLK = 256
+        SV = np.zeros((n, n, 3))
+        LV = np.zeros((n, n, 3))
+        for a0 in range(0, n, BLK):
+            sl = slice(a0, min(a0 + BLK, n))
+            Pb = np.ascontiguousarray(C[sl])
+            SV[sl] = source_vel_block(Pb, pc['qp'], pc['qw'], mesh.area,
+                                      size, _centroids(pc['qp'], pc['qw']))
+            LV[sl] = loop_vel_block(Pb, pc['ed'], pc['emask'])
+            # self rows: source-vel self is 0 (jump added by caller),
+            # loop self kept (principal value, matches numpy path)
+            for k, i in enumerate(range(a0, min(a0 + BLK, n))):
+                SV[a0 + k, i] = 0.0
+        WV = None
         if wc is not None:
-            v -= (muw[wc['owner'], None] * _loop_vel_rows(
-                p, wc['ed'], wc['emask'])).sum(axis=0)
-        # exterior self of own source sheet: -sigma/2 along outward normal
-        v -= 0.5 * sigma[i] * mesh.normal[i]
-        vel[i] = v
+            WV = np.zeros((n, wc['ed'].shape[0], 3))
+            for a0 in range(0, n, BLK):
+                sl = slice(a0, min(a0 + BLK, n))
+                Pb = np.ascontiguousarray(C[sl])
+                WV[sl] = loop_vel_block(Pb, wc['ed'], wc['emask'])
+        for i in range(n):
+            v = V.copy()
+            v -= (sigma[:, None] * SV[i]).sum(axis=0)
+            v -= (mu[:, None] * LV[i]).sum(axis=0)
+            if WV is not None:
+                v -= (muw[wc['owner'], None] * WV[i]).sum(axis=0)
+            # exterior self of own source sheet: -sigma/2 along outward normal
+            v -= 0.5 * sigma[i] * mesh.normal[i]
+            vel[i] = v
+    else:
+        for i in range(n):
+            p = C[i]
+            v = V.copy()
+            v -= (sigma[:, None] * _source_vel_rows(
+                p, pc['qp'], pc['qw'], mesh.area, size,
+                self_idx=i, normal=mesh.normal[i])).sum(axis=0)
+            v -= (mu[:, None] * _loop_vel_rows(p, pc['ed'], pc['emask'])).sum(axis=0)
+            if wc is not None:
+                v -= (muw[wc['owner'], None] * _loop_vel_rows(
+                    p, wc['ed'], wc['emask'])).sum(axis=0)
+            # exterior self of own source sheet: -sigma/2 along outward normal
+            v -= 0.5 * sigma[i] * mesh.normal[i]
+            vel[i] = v
     # Doublet jump correction: the in-plane loop value is the principal
     # value; the exterior tangential velocity adds half the surface
     # gradient of mu (the doublet sheet jumps by mu across the surface).
