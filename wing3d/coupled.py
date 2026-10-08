@@ -102,6 +102,47 @@ def trace_streamlines(mesh, vel, ds_factor=0.6, max_steps=400):
     return lines, covered
 
 
+def smooth_surface_field(mesh, F, passes=1):
+    """Area-weighted neighbor-average smoothing of a surface field.
+
+    Removes panel-discretization singularities (LE/corner velocity
+    spikes) while preserving the smooth physical field. Standard
+    de-singularization before boundary-layer tracing: the IBL
+    integrates dUe/ds from stagnation, where a single spiked panel
+    corrupts the entire downstream history (Thwaites lambda blowup).
+    """
+    F = np.asarray(F, dtype=float).copy()
+    n = mesh.npanels
+    # panel adjacency via shared verts
+    vert_to_pan = {}
+    for i, f in enumerate(mesh.faces):
+        for v in f:
+            vert_to_pan.setdefault(int(v), []).append(i)
+    nbr = [set() for _ in range(n)]
+    for lst in vert_to_pan.values():
+        for i in lst:
+            nbr[i].update(lst)
+    nbr = [sorted(s - {i}) for i, s in enumerate(nbr)]
+    w = np.asarray(mesh.area, dtype=float)
+    for _ in range(passes):
+        G = F.copy() if F.ndim == 1 else F.copy()
+        if F.ndim == 1:
+            for i in range(n):
+                js = nbr[i]
+                if js:
+                    tot = w[i] + w[js].sum()
+                    G[i] = (w[i] * F[i] + (w[js] * F[js]).sum()) / tot
+        else:
+            for i in range(n):
+                js = nbr[i]
+                if js:
+                    tot = w[i] + w[js].sum()
+                    G[i] = (w[i] * F[i] + (w[js, None] * F[js]).sum(
+                        axis=0)) / tot
+        F = G
+    return F
+
+
 def panel_ibl_map(mesh, lines, nu):
     """Run IBL per streamline; map Cf/dstar/d(Ue d*)/ds back to panels."""
     from .ibl import solve_streamline
@@ -187,7 +228,11 @@ def solve_coupled(mesh, wakes, vinf, Re, Lref=1.0, itmax=12, relax=0.3,
         cdf = 0.0 if bl is None else float(
             (bl['cf'] * mesh.area).sum() / 1.0)
         hist.append({'CL': f['CL'], 'CD': f['CDp'] + cdf, 'it': it})
-        lines, _ = trace_streamlines(mesh, res['vel'])
+        vmag_f = np.linalg.norm(res['vel'], axis=1)
+        vmag_s = smooth_surface_field(mesh, vmag_f, passes=1)
+        # rebuild vectors with smoothed magnitude, original direction
+        dirn = res['vel'] / np.maximum(vmag_f, 1e-12)[:, None]
+        lines, _ = trace_streamlines(mesh, dirn * vmag_s[:, None])
         bl = panel_ibl_map(mesh, lines, nu)
         rhs_new, _ = blowing_rhs(mesh, Brow, res['vel'], bl)
         extra_new = np.zeros_like(extra)
