@@ -19,9 +19,8 @@ VORTEX-FREEDOM DESIGN (measured 2026-10-08):
   phi from TSD with gamma_b as jump source, closed by Kutta
   (gamma_b(TE) = wake Gamma, updated). I.e. VLM+TSD coupling.
   Estimated: hours, high value (unlocks transonic wing3d).
-- Until then: use OF central anchors (cases/openfoam/transonic/)
+- Until then: use OpenFOAM central anchors (cases/openfoam/transonic/)
   for transonic truth; TSD linear + panel jumps for subsonic.
-"""
 
 Conservative form (flow along +x, perturbation potential phi)::
     d/dx [ A dphi/dx ] + d/dy [ dphi/dy ] + d/dz [ dphi/dz ] = 0
@@ -152,6 +151,12 @@ class TSDSolver:
         # ramped 0 at LE -> Gamma at TE (panel-mu-exact version is the
         # refinement; linear ramp already recovers the missing half).
         self.bound_ramp = bound_ramp and (wake_gamma is not None)
+        # FREE bound vortex (Kutta closure): per-span-cell amplitude k
+        # scaling the (fixed-shape) wing jump + wake Gamma. Solved with
+        # phi via Kutta rows (TE dCp = 0). k=1 reproduces prescribed.
+        self.k = np.ones(len(self.wing_jy))
+        self.kutta_w = 1.0  # Kutta-row weight in extended residual
+        self._circff = None  # farfield circulation (wake interp target)
         # metrics
         self.dx = np.diff(self.x)
         self.dy = np.diff(self.y)
@@ -222,13 +227,30 @@ class TSDSolver:
         # ---- z (central) + wake branch cut ----
         phiz_f = (phi[:, :, 1:] - phi[:, :, :-1]) / dz[None, None, :]
         k0 = self.k0
+        # span-cell amplitude k (free bound vortex; ones = prescribed):
+        # map each wake span cell onto the wing span grid
+        _wpos = np.clip(np.searchsorted(self.wing_jy, self.wake_jy),
+                        0, max(len(self.wing_jy) - 1, 0))
+        _kw = self.k[_wpos] if len(self.wing_jy) else np.ones(1)
         if len(self.wake_ix) and len(self.wake_jy) and k0 >= 1:
             WI, WJ = np.meshgrid(self.wake_ix, self.wake_jy, indexing='ij')
-            phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * self.wake_scale
-                                       * self.wake_G[WJ] / self.dz[k0 - 1])
+            _g = self.wake_scale * _kw[None, :] * self.wake_G[WJ]
+            if getattr(self, '_circff', None) is not None:
+                # TSFOIL-style: wake jump interpolated TE -> farfield
+                # (box consistency as Gamma evolves)
+                xw = self.xc[self.wake_ix]
+                t = np.clip((xw - self.chord) / max(
+                    self.x[-1] - self.chord, 1e-9), 0.0, 1.0)[:, None]
+                gff = self._circff[np.clip(
+                    WJ, 0, len(self._circff) - 1)]
+                _g = (1 - t) * _g + t * self.wake_scale * gff
+            phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * _g
+                                       / self.dz[k0 - 1])
         if self.bound_ramp and len(self.wing_ix) and len(self.wing_jy) \
                 and k0 >= 1:
             BI, BJ = np.meshgrid(self.wing_ix, self.wing_jy, indexing='ij')
+            BK = np.tile(np.arange(len(self.wing_jy)),
+                         (len(self.wing_ix), 1))
             if self.wing_jump is not None:
                 jump = np.asarray(self.wing_jump)
             else:
@@ -236,7 +258,7 @@ class TSDSolver:
                 ramp = xc[:, None]  # 0 at LE -> 1 at TE
                 jump = ramp * self.wake_G[BJ]
             phiz_f[BI, BJ, k0 - 1] -= (self.wake_sign * self.wake_scale
-                                       * jump / self.dz[k0 - 1])
+                                       * self.k[BK] * jump / self.dz[k0 - 1])
         wz = np.empty(nz)
         wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
         wz[0] = dz[0]
@@ -468,6 +490,73 @@ class TSDSolver:
                 CD += (cpu[i, j] - cpl[i, j]) * st * dA
         S = self.chord * self.span
         return {'CL': CL / S, 'CD': CD / S, 'cpu': cpu, 'cpl': cpl}
+
+    def kutta_residual(self, upstream=0):
+        """TE pressure-jump per wing span cell (Kutta rows).
+
+        Returns vector length len(wing_jy): dCp = cpl - cpu at the
+        last wing chord cell (upstream=0) or `upstream` cells ahead
+        of TE (upstream>0, off the cut-junction singularity).
+        Same extrapolation as loads(). Zero at a Kutta-satisfying
+        state; drives the free amplitudes k.
+        """
+        k0 = self.k0
+
+        def gradx(k):
+            g = np.zeros((self.nx, self.ny))
+            g[1:-1] = (self.phi[2:, :, k] - self.phi[:-2, :, k]) / (
+                self.x[2:] - self.x[:-2])[:, None]
+            return g
+
+        def surf_cp(k1, k2):
+            z1 = self.z[k1]
+            z2 = self.z[k2]
+            w = abs(z2) / max(abs(z2 - z1), 1e-12)
+            return -2 * (w * gradx(k1) + (1 - w) * gradx(k2))
+
+        ku1 = min(k0 + 1, self.nz - 1)
+        ku2 = min(k0 + 2, self.nz - 1)
+        kl1 = max(k0 - 1, 0)
+        kl2 = max(k0 - 2, 0)
+        cpu = surf_cp(ku1, ku2)
+        cpl = surf_cp(kl1, kl2)
+        ite = self.wing_ix[-1 - upstream] if upstream < len(
+            self.wing_ix) else self.wing_ix[0]
+        return np.array([cpl[ite, j] - cpu[ite, j]
+                         for j in self.wing_jy])
+
+    def recirc_update(self, W=0.25, circff=None):
+        """TSFOIL-style Kutta update (RECIRC).
+
+        TE jump CIRCTE(y) from potentials EXTRAPOLATED to the TE point
+        from both sides (CJ-style linear extrapolation -- avoids the
+        cut singularity that poisons raw discrete jumps). Relaxed:
+        Gamma <- (1-W)*Gamma + W*CIRCTE. Wake jump interpolated
+        CIRCTE -> CIRCFF downstream (box consistency). Returns max |dGamma|.
+        """
+        k0 = self.k0
+        # linear extrapolation weights to z=0 from planes k0+1/+2, k0-1/-2
+        zp1, zp2 = self.z[min(k0 + 1, self.nz - 1)], self.z[min(k0 + 2, self.nz - 1)]
+        zm1, zm2 = self.z[max(k0 - 1, 0)], self.z[max(k0 - 2, 0)]
+        wu = abs(zp2) / max(abs(zp2 - zp1), 1e-12)
+        wl = abs(zm2) / max(abs(zm2 - zm1), 1e-12)
+        ite = self.wing_ix[-1]
+        ku1 = min(k0 + 1, self.nz - 1)
+        ku2 = min(k0 + 2, self.nz - 1)
+        kl1 = max(k0 - 1, 0)
+        kl2 = max(k0 - 2, 0)
+        pup = wu * self.phi[ite, :, ku1] - (wu - 1.0) * self.phi[ite, :, ku2]
+        plo = wl * self.phi[ite, :, kl1] - (wl - 1.0) * self.phi[ite, :, kl2]
+        circte = pup - plo
+        # map TE column (full ny) onto wake span stations
+        jy = np.array(self.wing_jy)
+        newG = np.interp(self.yc, self.yc[jy], circte[jy],
+                         left=0.0, right=0.0)
+        oldG = self.wake_G.copy()
+        self.wake_G = (1 - W) * oldG + W * newG
+        if circff is not None:
+            self._circff = np.asarray(circff, dtype=float)
+        return float(np.abs(self.wake_G - oldG).max())
 
 
 def wake_farfield(panel_wakes, muw, X, Y, Z):
