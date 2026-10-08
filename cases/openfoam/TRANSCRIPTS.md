@@ -112,6 +112,36 @@ Cpmin -0.90 at x/c ~0.33-0.40, lower mild -0.18) -- bucket
 recovering past M0.9 (lower pocket gone). Transonic CL curve:
 0.402 / 0.072 / 0.285 / 0.257 @ M0.8/0.9/0.95/1.0.
 
+## 11. Complex-geometry campaign (wing3d panel + wakes, this study)
+
+Waked multi-surface configs (`wing3d/shapes.py`: `build_f16_waked`,
+`build_a330`, `build_shuttle`) with wake clipping + buried-panel force
+masks at body junctions. Without these, overlapping solids double lift
+and 10x drag (measured: F-16 CL 0.69/CDp 0.13 before, 0.26/0.001
+after at 4deg). Script: `tests3d/complex_campaign.py`.
+
+F-16-like (slope 0.065/deg; clean-subsonic published ~0.07-0.09,
+strake vortices missing so slightly low is expected):
+a=0/4/8/12deg -> CL -0.00/0.26/0.47/0.61. CDp surface-noisy
+(2x induced at high alpha; use wing-alone/Trefftz for drag).
+
+A-330-like (slope 0.108/deg, airliner-like; cruise CL~0.5 needs
+a~5deg here vs published): a=0/2/4 -> CL -0.04/0.18/0.39.
+Induced ~0.006 at CL 0.39; +friction (~0.015 missing) -> ~0.021
+vs published ~0.026 (L/D 19-20). Qualitative agreement.
+
+Shuttle-orbiter-like (approach): a=0/5/10/15 -> CL
+0.00/0.18/0.34/0.45. No vortex-lift break (panel stays attached;
+real orbiter gets LE-vortex lift then stalls). L/D at 10deg:
+10.4 inviscid vs published orbiter ~4-5 (no base/flap/gear drag
+here -- documented 2x gap).
+
+RUNTIMES (this host): wing3d complex config assemble 7-16 s (once)
++ solve 4-16 s per alpha point. OpenFOAM: car RANS-SST ~4 min,
+central Euler 12k ~10-19 min, wing RANS 172k ~30+ min (mesh-limited).
+Panel ~30-70x faster per point at inviscid fidelity. C-kernel port
+scoped separately (fused panel_rows, est. another 3-5x).
+
 ## Environment notes (this host)
 
 - Docker bind mounts broken (`Cannot allocate memory` on readdir);

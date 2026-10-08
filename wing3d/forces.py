@@ -2,13 +2,24 @@
 import numpy as np
 
 
-def pressure_forces(mesh, cp, vinf, rho=1.0, sref=None):
-    """Integrate pressure to wind-axis CL/CD/CS + CM. Returns dict."""
+def pressure_forces(mesh, cp, vinf, rho=1.0, sref=None, skip=None):
+    """Integrate pressure to wind-axis CL/CD/CS + CM. Returns dict.
+
+    skip: optional boolean/int array mask of panels to EXCLUDE (buried
+    panels inside overlapping solids carry interior garbage).
+    """
     V = np.asarray(vinf, dtype=float)
     vmag = np.linalg.norm(V)
     vhat = V / vmag
     q = 0.5 * rho * vmag ** 2
-    F = (-cp[:, None] * mesh.normal * mesh.area[:, None]).sum(axis=0) * q
+    cp = np.asarray(cp, dtype=float)
+    if skip is not None:
+        keep = np.ones(mesh.npanels, dtype=bool)
+        keep[np.asarray(skip, dtype=int)] = False
+    else:
+        keep = slice(None)
+    F = (-cp[keep, None] * mesh.normal[keep] * mesh.area[keep, None]).sum(
+        axis=0) * q
     # wind axes: drag along vhat, lift perpendicular (in x-z plane), side
     lift_dir = np.array([0.0, 0.0, 1.0])
     lift_dir = lift_dir - (lift_dir @ vhat) * vhat
