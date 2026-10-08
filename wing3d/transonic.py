@@ -91,3 +91,48 @@ if __name__ == '__main__':
     for a in [0, 2, 4, 6, 8]:
         p = predict(0.8, a)
         print('a=%d CL=%.3f CD=%.4f' % (a, p['CL'], p['CD']))
+
+
+def cp_critical(Mach, gamma=1.4):
+    """Critical (sonic) pressure coefficient at freestream Mach."""
+    M2 = Mach ** 2
+    t = (1 + 0.5 * (gamma - 1) * M2) / (1 + 0.5 * (gamma - 1))
+    return 2.0 / (gamma * M2) * (t ** (gamma / (gamma - 1)) - 1.0)
+
+
+def karman_tsien_cp(cp0, Mach):
+    """KT compressibility correction (scalar)."""
+    b = max(1 - Mach ** 2, 1e-9)
+    return cp0 / (b + Mach ** 2 / (1 + b) * cp0 / 2.0)
+
+
+def m_crit(cp0min, gamma=1.4):
+    """Critical Mach: suction peak first reaches sonic.
+
+    PG-amplified suction vs exact isentropic Cp* intersection
+    (bisection). PG matches NACA0012 Mcrit data (~0.73 at low alpha);
+    KT-based estimate would sit ~0.07 lower (KT over-deepens --
+    conservative, noted but not used).
+    Below M_crit the flow is shock-free and KT/PG are defensible;
+    above it pockets/shocks form (need TSD/OF/surrogate).
+    """
+    import numpy as np
+    lo, hi = 0.05, 0.99
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        pg = cp0min / max(np.sqrt(1 - mid ** 2), 1e-9)
+        if pg < cp_critical(mid, gamma):
+            hi = mid
+        else:
+            lo = mid
+    return 0.5 * (lo + hi)
+
+
+def kt_status(Mach, cp0min):
+    """Validity verdict for KT/PG at (Mach, suction peak)."""
+    mc = m_crit(cp0min)
+    if Mach < mc - 0.03:
+        return 'valid (subcritical, margin %.2f)' % (mc - Mach)
+    if Mach < mc + 0.02:
+        return 'marginal (near M_crit=%.2f)' % mc
+    return 'invalid (supercritical, M_crit=%.2f)' % mc
