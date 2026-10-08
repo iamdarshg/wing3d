@@ -19,9 +19,10 @@ import json
 
 _ANCHOR = {
     # (Mach, alpha): (CL, CD, shock_x, cpmin_up). Inflow-audited
-    # 2026-10-08: only these rows ran at labeled conditions.
+    # 2026-10-08: only these rows ran at labeled conditions (N2 gas).
     (0.80, 0.00): (0.0003, 0.0474, None, None),
-    (0.80, 1.25): (0.4020, 0.0414, 0.35, -1.27),
+    (0.80, 1.25): (None, None, None, None),  # pending true rerun
+    (0.80, 4.00): (0.2187, 0.0464, 0.35, -0.96),
     (0.80, 8.00): (0.4040, 0.0415, 0.35, -1.27),
     (0.90, 1.25): (0.0720, 0.0530, 0.40, -0.76),
 }

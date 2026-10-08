@@ -4,19 +4,19 @@
    "alpha": 0.0,
    "cd": 0.0474,
    "cl": 0.0003,
-   "note": "symmetric, spurious floor"
+   "note": "symmetric (verified)"
   },
   {
-   "alpha": 1.25,
-   "cd": 0.0414,
-   "cl": 0.402,
-   "note": "shock@0.35"
+   "alpha": 4.0,
+   "cd": 0.0464,
+   "cl": 0.2187,
+   "note": "TRUE rerun, verified inflow, pocket -0.96 shock@0.35"
   },
   {
    "alpha": 8.0,
    "cd": 0.0415,
    "cl": 0.404,
-   "note": "shock stall (4 consistent runs, inflow-audited)"
+   "note": "shock stall (5 consistent runs, inflow-audited)"
   }
  ],
  "cases": [

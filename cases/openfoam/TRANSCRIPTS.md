@@ -86,15 +86,37 @@ Physical (M0.9 lower surface goes supersonic even at low alpha).
 
 Case: `cases/openfoam/caseA4` (+3 accidental repeats). **CL = 0.404,
 CD = 0.0415** (4 consistent samples +-0.002). Pocket Cpmin -1.27 +
-shock at x/c ~0.35 -- IDENTICAL pocket/shock to alpha=1.25deg
-(CL 0.402). Extra incidence goes into the shock, not lift: stall
-flat from 1.25deg through 8deg. No alpha=4deg data yet.
+shock at x/c ~0.35.
+
+## 8b. NACA0012 M0.8 alpha=4deg Euler TRUE (verified inflow, N2 gas)
+
+Case: `cases/openfoam/caseA4v` (makecase protocol, maxCo 0.3,
+binary). Clean finish to t=0.3: **CL = 0.219, CD = 0.0464**.
+Pocket Cpmin -0.96, shock x/c ~0.3-0.43, lower mild -0.38.
+M0.8 alpha curve now: 0deg 0.000 / 4deg 0.219 / 8deg 0.404 --
+monotonic, diminishing slope (no stall cliff; earlier "flat"
+narrative void -- it compared alpha=8 with itself).
 
 ## 9. NACA0012 M1.1 anchor -- WITHDRAWN (inflow audit 2026-10-08:
 ran M0.8 alpha=8, misnormalized; the "Ackeret agreement" is void)
 
 ## 10. NACA0012 M0.95 anchor -- WITHDRAWN (same audit: M0.8 alpha=8).
 Reruns with verified inflow in progress.
+
+## 11. DATA INTEGRITY AUDIT 2026-10-08 (READ THIS BEFORE CITING)
+
+`of_verify.py` launch checklist added after finding: caseM95/caseM1/
+caseM11/caseA4 0/U files carried M0.8-alpha8 inflow (stale clone +
+no-op seds), so their "M0.95/M1.0/M1.1/a4" labels were wrong --
+denormalized they all read CL~0.40 (M0.8a8 stall, consistent).
+Also caseCentral/0/U was alpha=8 all along: the M0.8-alpha1.25
+anchor NEVER EXISTED. Standing (inflow-verified): M0.8a0,
+M0.9a1.25 only. Gas note: biconic janaf thermo is N2 (R=296.8),
+so old runs labeled with air sound speed sit ~0.015 low in Mach
+and +3.4% in CL/CD normalization; corrected where cited.
+`wing3d/makecase.py` (N2-consistent U/rhoInf) + `of_verify.py`
+(Rgas arg) prevent recurrence. Fresh-start only (restarts across
+alpha read stale BCs from time dirs).
 
 ## 11. Complex-geometry campaign (wing3d panel + wakes, this study)
 

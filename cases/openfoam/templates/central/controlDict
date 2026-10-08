@@ -1,0 +1,19 @@
+FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+application rhoCentralFoam;
+startFrom startTime; startTime 0; stopAt endTime; endTime 0.3;
+deltaT 2e-5; writeControl adjustable; writeInterval 0.03;
+purgeWrite 2; writeFormat ascii; writePrecision 6; writeCompression off;
+timeFormat general; timePrecision 6; runTimeModifiable true;
+adjustTimeStep yes; maxCo 0.5; maxDeltaT 1e-4;
+functions {
+ forces {
+  type forceCoeffs; libs ("libforces.so");
+  writeControl timeStep; writeInterval 10;
+  patches ("slab.stl");
+  rho rhoInf; rhoInf 1.1614; CofR (0.25 0 0);
+  liftDir (0 0 1); dragDir (1 0 0); pitchAxis (0 1 0);
+  magUInf 277.751; lRef 1.0; Aref 1.2;
+ }
+ residuals { type residuals; libs ("libutilityFunctionObjects.so");
+  writeControl timeStep; writeInterval 10; fields (p U T); }
+}

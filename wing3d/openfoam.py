@@ -169,7 +169,8 @@ simpleFoam > log.simpleFoam 2>&1
 
 
 def write_transonic_case(root, stl_name='slab.stl', chord=1.0, span_in=1.2,
-                         alpha_deg=1.25, mach=0.8, level=(4, 5)):
+                         alpha_deg=1.25, mach=0.8, level=(4, 5),
+                         wall='noslip'):
     """rhoSimpleFoam transonic Euler anchor (slip walls, laminar).
 
     Quasi-2D slab piercing the y-walls; shock location + wave drag anchor
