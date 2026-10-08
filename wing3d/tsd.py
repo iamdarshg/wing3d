@@ -1,5 +1,28 @@
 """3D conservative transonic small-disturbance (TSD) solver.
 
+STATUS: linear regime validated (panel-exact 1.4% via prescribed
+panel-mu jumps). Nonlinear (shock) regime PARKED pending bound-vortex
+freedom -- design note below.
+
+VORTEX-FREEDOM DESIGN (measured 2026-10-08):
+- Panel decomposition (NACA0012 AR6 a=4): body-only CL=0.267,
+  wake-only CL=-0.196, full 0.369. The wake UNLOADS the TE (Kutta
+  enforcer); it does not lift. Lift lives in the BODY (bound vortex).
+- TSD wake-only prescription induces ~half lift (0.203) -- correct
+  for a trailed system without its bound mate (Helmholtz), not a bug.
+- Prescribing the wing jump too pins the linear state (Kutta then
+  auto-satisfied for any scale; tangency monotonic in scale) so
+  shocks/lift-growth cannot develop. Kelvin: shocks don't create
+  circulation; the Kutta condition reselects Gamma, which must be FREE.
+- REQUIRED: explicit bound-vortex sheet unknown gamma_b(x,y) on the
+  wing, solved WITH phi: gamma_b from flow-tangency on the wing,
+  phi from TSD with gamma_b as jump source, closed by Kutta
+  (gamma_b(TE) = wake Gamma, updated). I.e. VLM+TSD coupling.
+  Estimated: hours, high value (unlocks transonic wing3d).
+- Until then: use OF central anchors (cases/openfoam/transonic/)
+  for transonic truth; TSD linear + panel jumps for subsonic.
+"""
+
 Conservative form (flow along +x, perturbation potential phi)::
     d/dx [ A dphi/dx ] + d/dy [ dphi/dy ] + d/dz [ dphi/dz ] = 0
     A = (1 - Minf^2) - (gamma+1) Minf^2 dphi/dx   (nonlinear coefficient)
