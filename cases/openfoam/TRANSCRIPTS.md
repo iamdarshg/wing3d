@@ -119,8 +119,21 @@ and +3.4% in CL/CD normalization; corrected where cited.
 (Rgas arg) prevent recurrence. Fresh-start only (restarts across
 alpha read stale BCs from time dirs).
 
-## 12. Complex-geometry campaign (wing3d panel + wakes, this study)
+## 11b. FINITE-WING RESOLUTION (the "1/3 levels" mystery solved)
 
+The slab (span 1.6, domain 1.2, tips outside) is a FINITE wing of
+AR=1.6, not quasi-2D -- tip vortices explain all level
+suppression. Compressible lifting-line check (AR=1.6):
+M0.885a1.25: LL 0.080 vs meas 0.070 (-13%);
+M0.95a1.25: 0.088 vs 0.083 (-5%);
+M0.8a4: 0.237 vs 0.219 (-8%);
+M0.8a8: 0.474 vs 0.404 (-15%, stall onset).
+Deficit grows with M/alpha = shock losses (physical trend).
+Anchors VALIDATED vs theory; shapes (shock@0.35, bucket, stall)
+corroborate. No mesh mystery remains (LE coarseness = error bars,
+not the factor).
+
+## 12. Complex-geometry campaign (wing3d panel + wakes, this study)
 Waked multi-surface configs (`wing3d/shapes.py`: `build_f16_waked`,
 `build_a330`, `build_shuttle`) with wake clipping + buried-panel force
 masks at body junctions. Without these, overlapping solids double lift
