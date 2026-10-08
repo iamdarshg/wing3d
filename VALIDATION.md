@@ -42,7 +42,34 @@ Docker here (OOM at 318k). 2D airfoil tutorial also unusable as-is
   wing3d coupled: 0.364. OpenFOAM RANS: 0.11 stalled (mesh-limited).
 - Inviscid methods agree within ~10%; RANS needs finer mesh.
 
-## 4. How to reproduce
+## 3. Cross-method wing summary (NACA0012 AR6, alpha 4deg, Re 3e6)
+
+- Lifting line: 0.33. VLM (in-repo): 0.39. wing3d inviscid: 0.365.
+  wing3d coupled: 0.364. OpenFOAM RANS: 0.11 stalled (mesh-limited).
+- Inviscid methods agree within ~10%; RANS needs finer mesh.
+
+## 4. Transonic Euler anchors (rhoCentralFoam LTS, quasi-2D slabs, this study)
+
+NACA0012 section, 12k cells each. Full transcripts in
+`cases/openfoam/TRANSCRIPTS.md`, machine-readable data + plots in
+the UI (`/validation`) and `cases/openfoam/transonic/summary.json`.
+
+| M | alpha | CL | CD | Shock | Note |
+|---|---|---|---|---|---|
+| 0.8 | 0 deg | 0.0003 | 0.047 | symmetric | symmetry check passes; ~0.04 spurious floor |
+| 0.8 | 1.25 deg | 0.402 | 0.0414 | x/c 0.35, Cp -1.22->-0.31 | anchor for TSD |
+| 0.8 | 4 deg | 0.404 | 0.0415 | same pocket | shock stall (flat 1.25-8 deg) |
+| 0.9 | 1.25 deg | 0.072 | 0.053 | double shock both sides | lift bucket |
+| 0.95 | 1.25 deg | 0.285 | 0.0294 | upper x/c 0.35 | bucket recovering |
+| 1.0 | 1.25 deg | 0.257 | 0.0265 | upper x/c 0.35, Cpmin -0.80 | M1.0 TARGET anchor |
+| 1.1 | 1.25 deg | 0.213 | 0.0219 | oblique x/c 0.3-0.4 | Ackeret 0.19 (+12%) |
+
+Caveats: Euler (no boundary layers); coarse mesh (no grid-convergence
+bars yet; spurious drag floor ~0.04 at M0.8); rhoSimpleFoam+upwind
+false-converges on these cases (rejected as truth, documented);
+runs die at shock-formation transients (chunked restarts used).
+
+## 5. How to reproduce
 
 - Panel: `python tests3d/validate_all.py`, `pytest tests3d/test_shapes.py`
 - UI: `python -m wing3d.app` (localhost:8080, STL upload)
@@ -52,10 +79,18 @@ Docker here (OOM at 318k). 2D airfoil tutorial also unusable as-is
   this host; use `docker cp` in/out (documented in session).
 - Plots: `cases/openfoam/polar_compare.png`, `sphere_compare.png`.
 
-## 5. Known limitations / next steps
+## 6. Known limitations / next steps
 
 1. Wing RANS fidelity needs more RAM (finer LE mesh + layers).
 2. Bluff bodies (car/F-16): panel is qualitative only (no separation);
    RANS is the reference (car validated).
-3. CD ~40% high in coupled solver (IBL friction calibration).
+3. CD ~40% high in coupled solver (IBL friction calibration; Michel
+   transition guard + Thwaites lambda clamp + bubble model landed;
+   bubble-loss (Horton) still missing at low Re).
 4. High-alpha (>6deg) panel degrades (TE singularity grows).
+5. TSD nonlinear unclosed: linear+TSD reproduces panel (1.4%), but
+   shock capture needs a free (Kutta-updated) bound vortex --
+   currently prescribed (pins linear state). OF anchors stand in.
+6. Transonic anchors need grid-convergence bars (finer LE mesh).
+7. Perf: panel assemble O(N^2) Python dispatch ~15 s/case; C kernel
+   port scoped (first target: fused panel_rows, est. 3-5x end-to-end).
