@@ -56,13 +56,11 @@ the UI (`/validation`) and `cases/openfoam/transonic/summary.json`.
 
 | M | alpha | CL | CD | Shock | Note |
 |---|---|---|---|---|---|
-| 0.8 | 0 deg | 0.0003 | 0.047 | symmetric | symmetry check passes; ~0.04 spurious floor |
+| 0.8 | 0 deg | 0.0003 | 0.047 | symmetric | symmetry check; ~0.04 spurious floor |
 | 0.8 | 1.25 deg | 0.402 | 0.0414 | x/c 0.35, Cp -1.22->-0.31 | anchor for TSD |
-| 0.8 | 4 deg | 0.404 | 0.0415 | same pocket | shock stall (flat 1.25-8 deg) |
-| 0.9 | 1.25 deg | 0.072 | 0.053 | double shock both sides | lift bucket |
-| 0.95 | 1.25 deg | 0.285 | 0.0294 | upper x/c 0.35 | bucket recovering |
-| 1.0 | 1.25 deg | 0.257 | 0.0265 | upper x/c 0.35, Cpmin -0.80 | M1.0 TARGET anchor |
-| 1.1 | 1.25 deg | 0.213 | 0.0219 | oblique x/c 0.3-0.4 | Ackeret 0.19 (+12%) |
+| 0.8 | 8 deg | 0.404 | 0.0415 | same pocket | shock stall (4 consistent runs) |
+| 0.9 | 1.25 deg | 0.072 | 0.053 | double shock | lift bucket |
+| (0.95/1.0/1.1 withdrawn 2026-10-08: ran M0.8a8 mislabeled; reruns pending) | | | | | |
 
 Caveats: Euler (no boundary layers); coarse mesh (no grid-convergence
 bars yet; spurious drag floor ~0.04 at M0.8); rhoSimpleFoam+upwind

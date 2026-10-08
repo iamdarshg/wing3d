@@ -18,15 +18,12 @@ import os
 import json
 
 _ANCHOR = {
-    # (Mach, alpha): (CL, CD, shock_x, cpmin_up)
+    # (Mach, alpha): (CL, CD, shock_x, cpmin_up). Inflow-audited
+    # 2026-10-08: only these rows ran at labeled conditions.
     (0.80, 0.00): (0.0003, 0.0474, None, None),
     (0.80, 1.25): (0.4020, 0.0414, 0.35, -1.27),
-    (0.80, 4.00): (0.4040, 0.0415, 0.35, -1.27),
-    (0.80, 8.00): (0.4040, 0.0415, 0.35, None),
+    (0.80, 8.00): (0.4040, 0.0415, 0.35, -1.27),
     (0.90, 1.25): (0.0720, 0.0530, 0.40, -0.76),
-    (0.95, 1.25): (0.2850, 0.0294, 0.35, -0.90),
-    (1.00, 1.25): (0.2570, 0.0265, 0.35, -0.80),
-    (1.10, 1.25): (0.2130, 0.0219, 0.35, -0.66),
 }
 
 _MACH = sorted({m for m, _ in _ANCHOR})
@@ -37,7 +34,7 @@ def _bilinear(M, a, field):
     """Bilinear interpolation on the anchor grid. NaN outside."""
     idx = {'CL': 0, 'CD': 1, 'shock': 2, 'cpmin': 3}[field]
     Ms = sorted({m for m, _ in _ANCHOR})
-    As = [0.0, 1.25, 4.0, 8.0]
+    As = [0.0, 1.25, 8.0]
     if not (Ms[0] <= M <= Ms[-1] and As[0] <= a <= As[-1]):
         return float('nan')
     # Mach slice at alpha=1.25 + alpha scaling from M0.8 row
@@ -74,7 +71,8 @@ def predict(Mach, alpha_deg):
         return {'CL': float('nan'), 'CD': float('nan'),
                 'shock_x': None, 'cpmin_up': None,
                 'source': 'KT (use panel+karman_tsien)'}
-    if not (0.8 <= Mach <= 1.1 and 0.0 <= alpha_deg <= 8.0):
+    Ms = sorted({m for m, _ in _ANCHOR})
+    if not (Ms[0] <= Mach <= Ms[-1] and 0.0 <= alpha_deg <= 8.0):
         return {'CL': float('nan'), 'CD': float('nan'),
                 'shock_x': None, 'cpmin_up': None,
                 'source': 'anchor (out of range)'}
