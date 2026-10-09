@@ -42,12 +42,6 @@ Docker here (OOM at 318k). 2D airfoil tutorial also unusable as-is
   wing3d coupled: 0.364. OpenFOAM RANS: 0.11 stalled (mesh-limited).
 - Inviscid methods agree within ~10%; RANS needs finer mesh.
 
-## 3. Cross-method wing summary (NACA0012 AR6, alpha 4deg, Re 3e6)
-
-- Lifting line: 0.33. VLM (in-repo): 0.39. wing3d inviscid: 0.365.
-  wing3d coupled: 0.364. OpenFOAM RANS: 0.11 stalled (mesh-limited).
-- Inviscid methods agree within ~10%; RANS needs finer mesh.
-
 ## 4. Transonic Euler anchors (rhoCentralFoam LTS, quasi-2D slabs, this study)
 
 NACA0012 section, 12k cells each. Full transcripts in
@@ -95,5 +89,41 @@ runs die at shock-formation transients (chunked restarts used).
    shock capture needs a free (Kutta-updated) bound vortex --
    currently prescribed (pins linear state). OF anchors stand in.
 6. Transonic anchors need grid-convergence bars (finer LE mesh).
-7. Perf: panel assemble O(N^2) Python dispatch ~15 s/case; C kernel
-   port scoped (first target: fused panel_rows, est. 3-5x end-to-end).
+7. Perf: C kernel LANDED (cffi fused panel_rows, validated 1e-11,
+   2.5-3.4x end-to-end, solve 8.7x; WING3D_NO_C=1 fallback).
+
+## 7. Bias directions (truth vs lies)
+
+Mean absolute error ~8-10%. Direction matters more than magnitude:
+
+| Check | Loss | Direction |
+|---|---|---|
+| Sphere Cp/Cd, car CD, 2D cl, wing CL | 1-5% | ~neutral |
+| Cylinder suction peak | -12% | conservative (underpredicts) |
+| Re drag, high Re | +12..+29% | CONSERVATIVE (overpredicts drag) |
+| Re drag, low Re (bubbles) | -9..-13% | FLATTERING (lies: drag lower than reality) |
+| KT transonic | +70..+289%, then collapse | broken (delusional then garbage) |
+| Shock-fitted M0.65-0.9 | +-5..11% | mildly conservative |
+| TSD/fullpot, OF anchors vs LL | -5..-15% | conservative (mesh starvation) |
+| Complex CL slopes | -10..-20% | conservative (missing vortex/separation lift) |
+
+Errors lean CONSERVATIVE (safe direction) except low-Re drag
+(optimistic lie -- Horton bubble loss modeled, burst unvalidated)
+and KT (rejected as truth above M0.65).
+
+## 8. Complex geometries with known numbers
+
+Geometries used: NACA0012 wings/slabs (AR6/AR16/AR12-proxy), sphere,
+cube, cylinder, ellipsoid, Ahmed car, F-16-like, A330-like,
+shuttle-like, F-5E-like (new). Overlapping solids need wake
+clipping + buried-panel masks (else 2x lift/10x drag); sharp
+strakes (LEX) break low-order panel globally -- modeled via
+Polhamus instead (wedge outward-normal bug also fixed).
+
+| Config | wing3d | Published | Verdict |
+|---|---|---|---|
+| F-5E-like slope | 0.06/deg (+Polhamus vortex at high α) | no hard public polar found (only blowing/spin studies) | qualitative; LEX analytic |
+| Orbiter approach | L/D 10.4 inviscid | ~3 (19 deg glideslope, sourced) to ~4.5 max (cited) | 2-3x over (no base/flap/gear/trim drag) |
+| A330-like | slope 0.108/deg, L/D ~18 est | L/D 19-20 claims | qualitative agreement |
+| F-16-like | slope 0.065/deg | ~0.07-0.09 est | plausible, strakes missing |
+| A350 / Bombardier Global | not built | estimates only, no hard data | skipped (low value vs A330) |
