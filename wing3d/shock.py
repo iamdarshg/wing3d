@@ -95,6 +95,8 @@ def pocket_and_shock(x, cp0, Minf, smooth=2):
     for i in idx:
         M1 = max(M1, mach_from_cp(cppg[i], Minf))
     # shock where pocket Mach falls through 1 + 0.3*(M1pk - 1)
+    # (empirical brackets Harris/OF to ~25%; recovery-fraction
+    # variant tested worse overall)
     i_pk = int(idx[np.argmin(cppg[idx])])
     M1x = np.array([mach_from_cp(c, Minf) for c in cppg])
     thr = 1.0 + 0.3 * (M1 - 1.0)
