@@ -66,7 +66,14 @@ def normal_shock_loss(M1, gamma=1.4):
 
 
 def pocket_and_shock(x, cp0, Minf, smooth=2):
-    """Returns dict(pocket(bool array), M1 peak, x_shock, Cp*)."""
+    """Returns dict(pocket(bool array), M1 peak, x_shock, Cp*).
+
+    Shock rule: first station past peak suction where the pocket Mach
+    falls through 1 + 0.3*(M1peak - 1) (strong pockets shock early
+    relative to extent, weak pockets ride further -- calibrated
+    against Harris + OpenFOAM anchors to +-35%).
+    Returns x_shock=None for M >= 1 (PG singular there) or no pocket.
+    """
     b = max(np.sqrt(1 - Minf ** 2), 1e-9)
     cp0 = np.asarray(cp0, dtype=float)
     # panel LE singularity spikes (Cp~-14 at nose) would fake a full-chord
@@ -80,16 +87,23 @@ def pocket_and_shock(x, cp0, Minf, smooth=2):
     out = {'pocket': sup, 'x_shock': None, 'M1': 1.0, 'cpstar': cps}
     if not np.any(sup):
         return out
+    if Minf >= 1.0:
+        return out  # PG singular at/above sonic; no prediction
     idx = np.where(sup)[0]
-    # shock at downstream end of pocket
-    i_sh = idx[-1]
-    out['x_shock'] = float(x[min(i_sh + 1, len(x) - 1)])
     # peak Mach in pocket
     M1 = 1.0
     for i in idx:
         M1 = max(M1, mach_from_cp(cppg[i], Minf))
+    # shock where pocket Mach falls through 1 + 0.3*(M1pk - 1)
+    i_pk = int(idx[np.argmin(cppg[idx])])
+    M1x = np.array([mach_from_cp(c, Minf) for c in cppg])
+    thr = 1.0 + 0.3 * (M1 - 1.0)
+    cands = np.where((np.arange(len(x)) > i_pk) & (M1x < thr))[0]
+    cands = cands[cands > idx[0]]
+    i_sh = int(cands[0]) if len(cands) else int(idx[-1])
+    out['x_shock'] = float(x[min(i_sh + 1, len(x) - 1)])
     out['M1'] = float(M1)
-    out['i_pk'] = int(idx[np.argmin(cppg[idx])])
+    out['i_pk'] = int(i_pk)
     out['i_sh'] = int(i_sh)
     return out
 
