@@ -166,8 +166,9 @@ def wedge(x0=0.0, x1=1.0, y0=-0.5, y1=0.5, z0=0.0, z1=0.3, nx=8, ny=8):
         for j in range(ny):
             a = b + i * (ny + 1) + j
             faces.append([a, a + 1, a + ny + 2, a + ny + 1])
-    # four side walls (low edge strips)
-    # front wall x=x0
+    # four side walls (winding: outward normals; verified by watertight
+    # + outward-normal check -- inward faces break Morino globally)
+    # front wall x=x0 (outward -x)
     b = len(verts)
     for j in range(ny + 1):
         y = y0 + (y1 - y0) * j / ny
@@ -175,8 +176,8 @@ def wedge(x0=0.0, x1=1.0, y0=-0.5, y1=0.5, z0=0.0, z1=0.3, nx=8, ny=8):
         verts.append([x0, y, z0])
     for j in range(ny):
         a = b + 2 * j
-        faces.append([a, a + 2, a + 3, a + 1])
-    # back wall x=x1
+        faces.append([a, a + 1, a + 3, a + 2])
+    # back wall x=x1 (outward +x)
     b = len(verts)
     for j in range(ny + 1):
         y = y0 + (y1 - y0) * j / ny
@@ -184,18 +185,26 @@ def wedge(x0=0.0, x1=1.0, y0=-0.5, y1=0.5, z0=0.0, z1=0.3, nx=8, ny=8):
         verts.append([x1, y, z1])
     for j in range(ny):
         a = b + 2 * j
+        faces.append([a, a + 2, a + 3, a + 1])
+    # side walls y=y0 (outward -y), y=y1 (outward +y)
+    b = len(verts)
+    for i in range(nx + 1):
+        x = x0 + (x1 - x0) * i / nx
+        z = z0 + (z1 - z0) * i / nx
+        verts.append([x, y0, z0 - 0.001])
+        verts.append([x, y0, z])
+    for i in range(nx):
+        a = b + 2 * i
+        faces.append([a, a + 2, a + 3, a + 1])
+    b = len(verts)
+    for i in range(nx + 1):
+        x = x0 + (x1 - x0) * i / nx
+        z = z0 + (z1 - z0) * i / nx
+        verts.append([x, y1, z0 - 0.001])
+        verts.append([x, y1, z])
+    for i in range(nx):
+        a = b + 2 * i
         faces.append([a, a + 1, a + 3, a + 2])
-    # side walls y=y0, y=y1
-    for yy in (y0, y1):
-        b = len(verts)
-        for i in range(nx + 1):
-            x = x0 + (x1 - x0) * i / nx
-            z = z0 + (z1 - z0) * i / nx
-            verts.append([x, yy, z0 - 0.001])
-            verts.append([x, yy, z])
-        for i in range(nx):
-            a = b + 2 * i
-            faces.append([a, a + 2, a + 3, a + 1])
     return Mesh(np.array(verts), faces)
 
 

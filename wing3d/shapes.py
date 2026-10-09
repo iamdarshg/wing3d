@@ -226,6 +226,63 @@ def _merge_with_wakes(parts, wake_specs, wake_kw=None):
     return merged, wakes
 
 
+def build_f5(scale=1.0, wake_kw=None):
+    """F-5E-like Tiger II (twin-engine body + thin wing + twin tails).
+
+    Meters at scale=1 (L~14.5, span~8.1, S~17.3). Returns (mesh,
+    wakes, sref, info). LEX strakes deliberately NOT meshed:
+    sharp acute junctions corrupt low-order panel globally
+    (measured CL 24 garbage with, clean without); strake vortex
+    lift via forces.polhamus_vortex_lift (textbook treatment).
+    """
+    L = 14.45 * scale
+    # twin-engine fuselage: wide flat-ish aft (two bumps merged in loft)
+    prof = [(0.00, 0.03, 0.0, 0.03), (0.05, 0.28, 0.0, 0.30),
+            (0.12, 0.50, 0.02, 0.55), (0.25, 0.72, 0.05, 0.80),
+            (0.40, 0.85, 0.05, 0.95), (0.60, 0.90, 0.05, 1.00),
+            (0.75, 0.88, 0.05, 0.95), (0.88, 0.75, 0.08, 0.75),
+            (0.96, 0.55, 0.10, 0.50), (1.00, 0.35, 0.10, 0.32)]
+    R = 1.0 * scale
+    stations = []
+    for fx, hw, zc, hh in prof:
+        loop = rounded_rect(hw * R, hh * R, 0.0, zc * R, 16)
+        stations.append((fx * L, loop))
+    fuse = loft(stations)
+    from .primitives import ellipsoid
+    canopy = ellipsoid(a=1.6 * scale, b=0.35 * scale, c=0.40 * scale,
+                       nlat=10, nlon=16, center=(0.30 * L, 0, 0.55 * scale))
+    # main wing: thin, tapered, swept 24deg
+    croot = 2.9 * scale
+    wing = _place_wing(dict(code='0012', span=8.1 * scale, chord=croot,
+                            taper=0.30, sweep_deg=24.0, n_chord=14,
+                            n_span=10, cosine=False),
+                       (0.42 * L, 0, -0.35 * scale))
+    # (LEX omitted -- see docstring.)
+    # all-moving h-tails (small, aft)
+    htail = _place_wing(dict(code='0012', span=4.4 * scale, chord=1.6 * scale,
+                             taper=0.45, sweep_deg=35.0, n_chord=10,
+                             n_span=6, cosine=False),
+                        (0.86 * L, 0, 0.10 * scale))
+    # twin canted vertical tails (cant implicit: slight outward offset)
+    vt_r = _vtail_up(dict(code='0012', span=2.4 * scale, chord=1.9 * scale,
+                          taper=0.5, sweep_deg=45.0, n_chord=10, n_span=6,
+                          cosine=False),
+                     (0.84 * L, 0.55 * scale, 1.30 * scale))
+    vt_l = _vtail_up(dict(code='0012', span=2.4 * scale, chord=1.9 * scale,
+                          taper=0.5, sweep_deg=45.0, n_chord=10, n_span=6,
+                          cosine=False),
+                     (0.84 * L, -0.55 * scale, 1.30 * scale))
+    parts = [fuse, canopy, wing, htail, vt_r, vt_l]
+    mesh, wakes = _merge_with_wakes(
+        parts, [(wing, ('y', 0.95 * scale)), (htail, ('y', 0.70 * scale)),
+                (vt_r, ('z', 1.10 * scale)), (vt_l, ('z', 1.10 * scale))],
+        wake_kw or {})
+    sref = 17.28 * scale * scale
+    mesh.meta = {'span': 8.1 * scale, 'length': L, 'kind': 'f5-like',
+                 'skipped': mesh.meta.get('skipped', [])}
+    return mesh, wakes, sref, {'span': 8.1 * scale, 'length': L}
+
+
 def build_f16_waked(scale=0.2, wake_kw=None):
     """F-16-like with TE wakes on wing + h/v tails. Returns
     (mesh, wakes, sref, info). sref = main-wing planform."""
