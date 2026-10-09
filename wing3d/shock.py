@@ -74,7 +74,11 @@ def pocket_and_shock(x, cp0, Minf, smooth=2):
     against Harris + OpenFOAM anchors to +-35%).
     Returns x_shock=None for M >= 1 (PG singular there) or no pocket.
     """
-    b = max(np.sqrt(1 - Minf ** 2), 1e-9)
+    if Minf >= 1.0:
+        return {'pocket': np.zeros_like(np.asarray(cp0), dtype=bool),
+                'x_shock': None, 'M1': 1.0,
+                'cpstar': float('nan')}
+    b = max(np.sqrt(max(1 - Minf ** 2, 1e-9)), 1e-9)
     cp0 = np.asarray(cp0, dtype=float)
     # panel LE singularity spikes (Cp~-14 at nose) would fake a full-chord
     # pocket; light smoothing preserves the physical suction shape
@@ -137,7 +141,7 @@ def shock_fitted_cp(x, cp0, Minf, gamma=1.4, blend=0.25):
     """
     x = np.asarray(x, dtype=float)
     cp0 = np.asarray(cp0, dtype=float)
-    b = max(np.sqrt(1 - Minf ** 2), 1e-9)
+    b = max(np.sqrt(max(1 - Minf ** 2, 1e-9)), 1e-9)
     cppg = cp0 / b
     pk = pocket_and_shock(x, cp0, Minf)
     if pk['x_shock'] is None:
