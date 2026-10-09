@@ -121,6 +121,13 @@ lower -0.62) with shock at x/c ~0.75-0.85 (aft shock: sonic
 pocket extends far back at M1.0). High wave drag physical.
 Shock march: 0.35 (M0.8) -> 0.4 (M0.9) -> 0.8 (M1.0).
 
+## 10c. NACA0012 M0.7 alpha=1.25 TRUE (verified N2 inflow, AR1.6)
+
+Case: `cases/openfoam/caseM07v` (makecase protocol, clean End at
+t=0.3). **CL = 0.066, CD = 0.047**. LL AR1.6 predicts 0.070 (-5%).
+KT-handoff anchor: KT valid here (M_crit ~0.72), bridge between
+subsonic panel and transonic set.
+
 ## 11. DATA INTEGRITY AUDIT 2026-10-08 (READ THIS BEFORE CITING)
 
 `of_verify.py` launch checklist added after finding: caseM95/caseM1/
