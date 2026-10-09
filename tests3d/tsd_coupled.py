@@ -15,7 +15,7 @@ from scipy.spatial import cKDTree
 from scipy.optimize import newton_krylov
 
 
-def build_case(Minf, alpha_deg, linear):
+def build_case(Minf, alpha_deg, linear, fullpot=False):
     mesh = build_wing('0012', span=6.0, chord=1.0, n_chord=24, n_span=12)
     wakes = build_wake_from_meta(mesh)
     A, Brow = assemble(mesh, wakes, kutta_mode='doublet')
@@ -31,7 +31,8 @@ def build_case(Minf, alpha_deg, linear):
     g = {'y': np.array([mesh.centroid[j * 48][1] for j in range(24)]),
          'gamma': np.array(res['muw'])}
     s = TSDSolver(Minf=Minf, alpha_deg=alpha_deg, nx=80, ny=32, nz=32,
-                  omega=0.8, wake_gamma=g, linear=linear)
+                  omega=0.8, wake_gamma=g, linear=linear,
+                  fullpot=fullpot)
     C = mesh.centroid
     mu = np.asarray(res['mu'])
     up_idx = C[:, 2] > 0.001
@@ -53,39 +54,47 @@ def build_case(Minf, alpha_deg, linear):
     s.phi[:, :, 0] = F[:, :, 0]
     s.phi[:, :, -1] = F[:, :, -1]
     s.wake_scale = 1.0
-    return s
+    return s, res, mesh
 
 
-def run_coupled(Minf, alpha_deg=1.25, linear=True, kw=10.0, verbose=True):
-    s = build_case(Minf, alpha_deg, linear)
+def panel_aft_target(mesh, res, yc, xq=0.9):
+    """Panel sectional dCp (lower-upper) at x=xq per span station yc.
+
+    Physical Kutta target from the panel solution (no self-reference).
+    """
+    C = mesh.centroid
+    cp = np.asarray(res['cp'])
+    out = np.zeros(len(yc))
+    for j, y in enumerate(yc):
+        du, dl = None, None
+        for sgn, tag in [(1, 'u'), (-1, 'l')]:
+            m = (np.abs(C[:, 1] - y) < 0.35) & ((C[:, 2] * sgn) > 0.001)
+            if not np.any(m):
+                continue
+            o = np.argsort(C[m, 0])
+            xx, cc = C[m, 0][o], cp[m][o]
+            v = float(np.interp(xq, xx, cc))
+            if tag == 'u':
+                du = v
+            else:
+                dl = v
+        if du is not None and dl is not None:
+            out[j] = dl - du
+    return out
+
+
+def run_coupled(Minf, alpha_deg=1.25, linear=True, kw=10.0, verbose=True,
+                fullpot=False, epochs=10):
+    s, res, mesh = build_case(Minf, alpha_deg, linear, fullpot)
     nphi = s.nx * s.ny * s.nz
     nk = len(s.wing_jy)
     s.k[:] = 1.0
-    # phase 0 (tare): linear prescribed solution's TE pattern.
-    # In linear mode this IS the answer (k must stay 1); in nonlinear
-    # mode the rows drive k to hold this pattern (Kutta up to the
-    # shared panel discretization defect).
-    s_lin = build_case(Minf, alpha_deg, True)
-    s_lin.wing_jump = s.wing_jump
-    s_lin.wake_scale = 1.0
-
-    def func_lin(x):
-        s_lin.phi[:] = x.reshape(s_lin.nx, s_lin.ny, s_lin.nz)
-        R = s_lin.residual()
-        R[0, :, :] = 0
-        R[-1, :, :] = 0
-        R[:, 0, :] = 0
-        R[:, -1, :] = 0
-        R[:, :, 0] = 0
-        R[:, :, -1] = 0
-        return R.ravel()
-
-    sol = newton_krylov(func_lin, s_lin.phi.ravel().copy(), iter=60,
-                        verbose=False, f_tol=1e-4, f_rtol=1e-10)
-    s_lin.phi[:] = sol.reshape(s_lin.nx, s_lin.ny, s_lin.nz)
-    tare = s_lin.kutta_residual(upstream=2)
+    # panel aft-loading target (physical Kutta reference, no
+    # self-reference): TSD must reproduce panel's sectional dCp at
+    # x=0.9 while the pocket develops forward of it.
+    tare = panel_aft_target(mesh, res, s.yc[s.wing_jy])
     if verbose:
-        print('tare mean=%.4f' % tare.mean(), flush=True)
+        print('panel target mean=%.4f' % tare.mean(), flush=True)
 
     def func(x):
         s.phi[:] = x[:nphi].reshape(s.nx, s.ny, s.nz)
@@ -107,32 +116,37 @@ def run_coupled(Minf, alpha_deg=1.25, linear=True, kw=10.0, verbose=True):
         s.phi[:] = sol[:nphi].reshape(s.nx, s.ny, s.nz)
         s.k[:] = sol[nphi:]
     else:
-        # Picard-outer (map+A refresh) + NK-inner (frozen smooth epoch)
-        for epoch in range(10):
+        # Picard-outer (map+A/rho refresh) + NK-inner (frozen smooth epoch)
+        for epoch in range(epochs):
             s._frozen = s._sup_mask()
-            dx = s.dx
-            phix = (s.phi[1:, :, :] - s.phi[:-1, :, :]) / dx[:, None, None]
-            s._frozenA = s._coeff_A(phix)
+            s._frozenA = s._face_coeff()
+            if fullpot:
+                dx = s.dx
+                phix = (s.phi[1:, :, :] - s.phi[:-1, :, :]) / \
+                    dx[:, None, None]
+                s._frozenRho = s._face_rho(phix)
             x0 = np.concatenate([s.phi.ravel(), s.k.copy()])
             sol = newton_krylov(func, x0, iter=60, verbose=False,
                                 f_tol=1e-5, f_rtol=1e-8)
             s.phi[:] = sol[:nphi].reshape(s.nx, s.ny, s.nz)
             s.k[:] = sol[nphi:]
-            L = s.loads()
+            L = s.fp_loads() if fullpot else s.loads()
             print('  epoch %d: CL=%.4f k_mid=%.3f nsup=%d' % (
                 epoch, L['CL'], s.k[len(s.k) // 2],
                 int(s._sup_mask().sum())), flush=True)
         s._frozen = None
         s._frozenA = None
-    L = s.loads()
+        s._frozenRho = None
+    L = s.fp_loads() if fullpot else s.loads()
     return s, L
 
 
 if __name__ == '__main__':
     Minf = float(sys.argv[1]) if len(sys.argv) > 1 else 0.3
     linear = not (len(sys.argv) > 2 and sys.argv[2] == 'nl')
+    fp = len(sys.argv) > 3 and sys.argv[3] == 'fp'
     a = 4.0 if linear else 1.25
-    s, L = run_coupled(Minf, alpha_deg=a, linear=linear)
-    print('coupled M%.2f %s: CL=%.4f CD=%.5f k_mid=%.3f' % (
-        Minf, 'lin' if linear else 'NL', L['CL'], L['CD'],
-        s.k[len(s.k) // 2]))
+    s, L = run_coupled(Minf, alpha_deg=a, linear=linear, fullpot=fp)
+    print('coupled M%.2f %s%s: CL=%.4f CD=%.5f k_mid=%.3f' % (
+        Minf, 'lin' if linear else 'NL', '/fp' if fp else '', L['CL'],
+        L['CD'], s.k[len(s.k) // 2]))
