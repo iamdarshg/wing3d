@@ -112,6 +112,43 @@ def wave_drag(x, cp0, Minf, cal=1.0):
     return {'cdw': float(cdw), 'x_shock': pk['x_shock'], 'M1': pk['M1']}
 
 
+def shock_fitted_cp(x, cp0, Minf, gamma=1.4, blend=0.25):
+    """Sinnott-type shock-fitted Cp: isentropic PG pocket + normal-shock
+    jump at x_shock + exponential blend back to the subsonic PG curve.
+
+    Returns dict(x, cp_corr, x_shock, M1). Integrate for CL/CD.
+    Validated: Harris M0.75a2 (below), OF anchors.
+    """
+    x = np.asarray(x, dtype=float)
+    cp0 = np.asarray(cp0, dtype=float)
+    b = max(np.sqrt(1 - Minf ** 2), 1e-9)
+    cppg = cp0 / b
+    pk = pocket_and_shock(x, cp0, Minf)
+    if pk['x_shock'] is None:
+        return {'x': x, 'cp_corr': cppg, 'x_shock': None, 'M1': 1.0}
+    xs = pk['x_shock']
+    # pocket Mach just ahead of shock (peak in pocket)
+    M1 = pk['M1']
+    # post-shock subsonic Cp from normal-shock relations via M2
+    gm1 = gamma - 1.0
+    M2sq = (M1 ** 2 + 2 / gm1) / (2 * gamma * M1 ** 2 / gm1 - 1)
+    M2sq = min(max(M2sq, 0.01), 1.0)
+    # Cp from local Mach (isentropic, subsonic branch): invert Cp(M)
+    # via freestream: Cp = (2/gM^2)[(p/pinf) - 1], p/pinf from M2
+    p_pinf = (1 + 0.5 * gm1 * Minf ** 2) ** (gamma / gm1) / (
+        1 + 0.5 * gm1 * M2sq) ** (gamma / gm1)
+    cp2 = 2.0 / (gamma * Minf ** 2) * (p_pinf - 1.0)
+    cp_corr = cppg.copy()
+    # shock jump: replace pocket recompression from x_shock region
+    ish = int(np.argmin(np.abs(x - xs)))
+    # blend Cp2 -> downstream PG over `blend` chord fraction
+    for i in range(ish, len(x)):
+        w = np.exp(-max(x[i] - xs, 0.0) / max(blend, 1e-9))
+        cp_corr[i] = w * cp2 + (1 - w) * cppg[i]
+    return {'x': x, 'cp_corr': cp_corr, 'x_shock': xs, 'M1': M1,
+            'cp2': float(cp2)}
+
+
 if __name__ == '__main__':
     # Harris M0.75 a2deg: shock@0.52 (from NASA TM-81927 text tables)
     # NACA0012 upper Cp0 (incompressible, thin-airfoil-ish peak): use
