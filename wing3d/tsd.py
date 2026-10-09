@@ -320,14 +320,17 @@ class TSDSolver:
         upd[:, :, -1] = 0
 
     def solve(self, itmax=600, tol=1e-5, verbose=True, ramp=100,
-              freeze_every=0, init_linear=True):
-        """Red-black SOR (SPD operator: standard form).
+              freeze_every=0, init_linear=True, use_lines=False):
+        """Relaxation solver (red-black SOR or x-line relaxation).
 
         ramp: iterations over which wake_scale goes 0 -> 1 (avoids
         startup shock from impulsive circulation).
         freeze_every: nonlinear mode: refresh the frozen supersonic map
         every N iters (0 = live map). init_linear: solve the linear
         problem first and use it as the nonlinear init (continuation).
+        use_lines: x-line relaxation (Thomas per x-line, alternating
+        sweep direction) instead of point SOR -- far better on
+        stretched grids and required for stiff transonic cases.
         """
         if init_linear and not self.linear:
             # linear init WITH the same wake/farfield (lifting from step 0)
@@ -411,15 +414,20 @@ class TSDSolver:
                 self.phi[:, -1, :] = F[:, -1, :]
                 self.phi[:, :, 0] = F[:, :, 0]
                 self.phi[:, :, -1] = F[:, :, -1]
-            for mask in (red, ~red):
-                R = self.residual()
-                upd = np.zeros_like(self.phi)
-                # SOR for Ax=b with A_ii<0 (discrete Laplacian-like):
-                # x += (w/A_ii)(b-Ax) = +w*R/D, D = |A_ii| > 0.
-                upd[mask] = +self.omega * R[mask] / D[mask]
-                self._apply_bc(upd)
-                self.phi[mask] += upd[mask]
+            if use_lines:
+                self.line_relax(omega=0.8,
+                                direction=+1 if it % 2 == 0 else -1)
+            else:
+                for mask in (red, ~red):
+                    R = self.residual()
+                    upd = np.zeros_like(self.phi)
+                    # SOR for Ax=b with A_ii<0 (discrete Laplacian-like):
+                    # x += (w/A_ii)(b-Ax) = +w*R/D, D = |A_ii| > 0.
+                    upd[mask] = +self.omega * R[mask] / D[mask]
+                    self._apply_bc(upd)
+                    self.phi[mask] += upd[mask]
             if it % 50 == 0 or it == itmax - 1:
+                R = self.residual()
                 r = np.abs(R[1:-1, 1:-1, 1:-1]).max()
                 if verbose:
                     nsup = int(self._sup_mask().sum()) if not self.linear \
@@ -557,6 +565,88 @@ class TSDSolver:
         if circff is not None:
             self._circff = np.asarray(circff, dtype=float)
         return float(np.abs(self.wake_G - oldG).max())
+
+    def line_relax(self, omega=0.8, direction=+1):
+        """One x-line-relaxation sweep (all y,z lines, Thomas solve).
+
+        Approximate-Newton step with the |Jacobian| tridiagonal in x
+        (absolute values -> M-matrix, Thomas-stable even where the
+        frozen A < 0; y/z/transpiration/cut explicit in RHS).
+        Matches the SOR sign convention (x += +w*R/D).
+        `direction` alternates sweep order (helps supersonic advection).
+        Returns max |update|.
+        """
+        phi, nx, ny, nz = self.phi, self.nx, self.ny, self.nz
+        dx, dy, dz = self.dx, self.dy, self.dz
+        wx = np.empty(nx)
+        wx[1:-1] = 0.5 * (dx[:-1] + dx[1:])
+        wx[0] = dx[0]
+        wx[-1] = dx[-1]
+        wy = np.empty(ny)
+        wy[1:-1] = 0.5 * (dy[:-1] + dy[1:])
+        wy[0] = dy[0]
+        wy[-1] = dy[-1]
+        wz = np.empty(nz)
+        wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
+        wz[0] = dz[0]
+        wz[-1] = dz[-1]
+        phix_f = (phi[1:, :, :] - phi[:-1, :, :]) / dx[:, None, None]
+        if self.linear:
+            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
+        elif self._frozenA is not None:
+            A_f = self._frozenA
+        else:
+            A_f = self._coeff_A(phix_f)
+        maxupd = 0.0
+        R = self.residual()
+        # Jacobi-style: buffer all line updates from ONE residual, apply
+        # at sweep end (Gauss-Seidel with per-line stale R diverges).
+        dall = np.zeros_like(phi)
+        jr = range(1, ny - 1) if direction > 0 else range(ny - 2, 0, -1)
+        kr = range(1, nz - 1) if direction > 0 else range(nz - 2, 0, -1)
+        for j in jr:
+            dyy = (1.0 / (dy[j - 1] * wy[j]) + 1.0 / (dy[j] * wy[j])) \
+                if 0 < j < ny - 1 else 0.0
+            for k in kr:
+                dzz = (1.0 / (dz[k - 1] * wz[k]) + 1.0 / (dz[k] * wz[k])) \
+                    if 0 < k < nz - 1 else 0.0
+                n = nx - 2
+                a = np.zeros(n)
+                b = np.zeros(n)
+                c = np.zeros(n)
+                rhs = np.zeros(n)
+                for ii, i in enumerate(range(1, nx - 1)):
+                    wxi = wx[i]
+                    A0 = abs(A_f[i - 1, j, k]) if i - 1 < A_f.shape[0] \
+                        else 0.0
+                    A1 = abs(A_f[i, j, k]) if i < A_f.shape[0] else 0.0
+                    d0 = max(dx[i - 1], 1e-300)
+                    d1 = max(dx[i] if i < len(dx) else dx[-1], 1e-300)
+                    if ii > 0:
+                        a[ii] = -A0 / (d0 * wxi)
+                    b[ii] = (A0 / (d0 * wxi) + A1 / (d1 * wxi)
+                             + dyy + dzz)
+                    if ii < n - 1:
+                        c[ii] = -A1 / (d1 * wxi)
+                    rhs[ii] = R[i, j, k]
+                for ii in range(1, n):
+                    w = a[ii] / max(b[ii - 1], 1e-300)
+                    b[ii] -= w * c[ii - 1]
+                    rhs[ii] -= w * rhs[ii - 1]
+                dphi = np.zeros(n)
+                dphi[-1] = rhs[-1] / max(b[-1], 1e-300)
+                for ii in range(n - 2, -1, -1):
+                    dphi[ii] = (rhs[ii] - c[ii] * dphi[ii + 1]) / max(
+                        b[ii], 1e-300)
+                # match SOR sign convention (x += +w*R/D, A_ii<0)
+                upd = omega * dphi
+                for ii, i in enumerate(range(1, nx - 1)):
+                    dall[i, j, k] = upd[ii]
+                    if abs(upd[ii]) > maxupd:
+                        maxupd = abs(upd[ii])
+        self._apply_bc(dall)
+        phi += dall
+        return maxupd
 
 
 def wake_farfield(panel_wakes, muw, X, Y, Z):
