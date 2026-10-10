@@ -15,7 +15,8 @@ from scipy.spatial import cKDTree
 from scipy.optimize import newton_krylov
 
 
-def build_case(Minf, alpha_deg, linear, fullpot=False):
+def build_case(Minf, alpha_deg, linear, fullpot=False, box=None,
+               nx=80, ny=32, nz=32):
     mesh = build_wing('0012', span=6.0, chord=1.0, n_chord=24, n_span=12)
     wakes = build_wake_from_meta(mesh)
     A, Brow = assemble(mesh, wakes, kutta_mode='doublet')
@@ -30,9 +31,9 @@ def build_case(Minf, alpha_deg, linear, fullpot=False):
     wakes_long = build_wake(mesh, info, length=9.0, n_panels=6)
     g = {'y': np.array([mesh.centroid[j * 48][1] for j in range(24)]),
          'gamma': np.array(res['muw'])}
-    s = TSDSolver(Minf=Minf, alpha_deg=alpha_deg, nx=80, ny=32, nz=32,
+    s = TSDSolver(Minf=Minf, alpha_deg=alpha_deg, nx=nx, ny=ny, nz=nz,
                   omega=0.8, wake_gamma=g, linear=linear,
-                  fullpot=fullpot)
+                  fullpot=fullpot, box=box)
     C = mesh.centroid
     mu = np.asarray(res['mu'])
     up_idx = C[:, 2] > 0.001

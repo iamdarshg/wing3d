@@ -94,9 +94,13 @@ class TSDSolver:
                  thick=0.12, gamma=1.4, nx=100, ny=40, nz=40,
                  omega=1.5, wake_gamma=None, wake_xmax=None,
                  farfield=None, wake_sign=+1.0, linear=False,
-                 bound_ramp=True, wing_jump=None):
+                 bound_ramp=True, wing_jump=None, fullpot=False,
+                 box=None):
         self.Minf = Minf
         self.linear = linear  # freeze A = 1-Min^2 (diagnostic linear regime)
+        # full potential (density-coupled exact potential, valid to M1+)
+        # instead of TSD linearization; shares grid/BCs/wake/line-solver
+        self.fullpot = fullpot and not linear
         self._frozen = None  # frozen supersonic map (nonlinear epochs)
         self._frozenA = None  # frozen full A coefficient (nonlinear epochs)
         # exact bound jump from panel mu (array over (wing_ix, wing_jy));
@@ -118,7 +122,8 @@ class TSDSolver:
         # wake_farfield()) so the wake jump exits cleanly.
         self.farfield = farfield
         self.wake_xmax = wake_xmax
-        self.x, self.y, self.z = make_grid(chord, span, nx, ny, nz)
+        self.x, self.y, self.z = make_grid(chord, span, nx, ny, nz,
+                                            **(box or {}))
         self.nx, self.ny, self.nz = nx, ny, nz
         self.phi = np.zeros((nx, ny, nz))
         # wing mask: cells whose x-center in [0,chord], |y|<span/2
@@ -157,6 +162,7 @@ class TSDSolver:
         self.k = np.ones(len(self.wing_jy))
         self.kutta_w = 1.0  # Kutta-row weight in extended residual
         self._circff = None  # farfield circulation (wake interp target)
+        self._frozenRho = None  # frozen face density (fullpot epochs)
         # metrics
         self.dx = np.diff(self.x)
         self.dy = np.diff(self.y)
@@ -169,45 +175,118 @@ class TSDSolver:
         gm = self.gamma
         return (1 - self.Minf ** 2) - (gm + 1) * self.Minf ** 2 * phix
 
+    def _face_rho(self, phix_f, phiy_f=None, phiz_f=None):
+        """Full-potential face density from face perturbation gradients.
+
+        q = (1+phix, phiy, phiz) (freestream (1,0,0)); rho/rho_inf =
+        [1 + (g-1)/2 M^2 (1 - |q|^2)]^(1/(g-1)). q^2 clipped at the
+        vacuum-limit value (standard density clipping: prevents NaN
+        from fractional powers during transients).
+        Transverse gradients averaged to x-faces from nodes when given.
+        """
+        gm = self.gamma
+        q2 = (1.0 + phix_f) ** 2
+        if phiy_f is not None:
+            q2 = q2 + 0.25 * (phiy_f[:-1, :, :] + phiy_f[1:, :, :]) ** 2 \
+                if phiy_f.shape[0] == phix_f.shape[0] + 1 else q2
+        if phiz_f is not None:
+            q2 = q2 + 0.25 * (phiz_f[:-1, :, :] + phiz_f[1:, :, :]) ** 2 \
+                if phiz_f.shape[0] == phix_f.shape[0] + 1 else q2
+        q2max = 1 - (0.2 ** (gm - 1) - 1.0) * 2 / max(
+            (gm - 1) * self.Minf ** 2, 1e-9)
+        q2 = np.minimum(np.maximum(q2, 0.0), q2max)
+        rho = (1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2)) ** (
+            1 / (gm - 1))
+        return np.maximum(rho, 0.2)
+
+    def _xflux(self, phi, dx):
+        """x-face fluxes + linearization coefficient + supersonic mask.
+
+        Modes: linear (A const), TSD (A(phi)), fullpot (rho*qx).
+        Returns (Fx, A_f, sub).
+        """
+        phix_f = (phi[1:, :, :] - phi[:-1, :, :]) / dx[:, None, None]
+        if self.linear:
+            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
+            return A_f * phix_f, A_f, np.zeros_like(A_f, dtype=bool)
+        if getattr(self, 'fullpot', False):
+            rho_f = self._frozenRho if self._frozenRho is not None \
+                else self._face_rho(phix_f)
+            Fx = rho_f * (1.0 + phix_f)
+            # face Mach^2: |q|^2 * Minf^2 * (a_inf/a)^2 with
+            # (a_inf/a)^2 = rho^-(gamma-1) (isentropic, normalized)
+            gm = self.gamma
+            q2 = (1.0 + phix_f) ** 2
+            Mface = (q2 * self.Minf ** 2
+                     / np.maximum(rho_f, 1e-9) ** (gm - 1))
+            sub = Mface > 1.0
+            if self._frozen is not None:
+                sub = self._frozen
+            Fup = np.zeros_like(Fx)
+            rho_up = rho_f.copy()
+            # upwind density: backward face value
+            rho_up[1:] = rho_f[:-1]
+            Fup[1:] = rho_up[1:] * (
+                1.0 + (phi[1:-1, :, :] - phi[:-2, :, :]) /
+                dx[:-1, None, None])
+            Fx = np.where(sub, Fup, Fx)
+            return Fx, rho_f, sub
+        if self._frozenA is not None:
+            A_f = self._frozenA
+        else:
+            A_f = self._coeff_A(phix_f)
+        Fx = A_f * phix_f
+        if self._frozen is not None:
+            sub = self._frozen
+        else:
+            sub = self._sup_mask()
+        Fup = np.zeros_like(Fx)
+        Fup[1:] = A_f[1:] * (phi[1:-1, :, :] - phi[:-2, :, :]) / \
+            dx[:-1, None, None]
+        Fx = np.where(sub, Fup, Fx)
+        return Fx, A_f, sub
+
+    def _face_coeff(self):
+        """Linearization coefficient on x-faces (for frozen epochs and
+        the line solver): A (TSD/linear) or rho (full potential)."""
+        dx = self.dx
+        phix_f = (self.phi[1:, :, :] - self.phi[:-1, :, :]) / dx[:, None, None]
+        if self.linear:
+            return np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
+        if getattr(self, 'fullpot', False):
+            if self._frozenRho is not None:
+                return self._frozenRho
+            return self._face_rho(phix_f)
+        return self._coeff_A(phix_f)
+
     def _sup_mask(self):
         """Current supersonic-face mask (for frozen-coefficient epochs)."""
         dx = self.dx
         phix_f = (self.phi[1:, :, :] - self.phi[:-1, :, :]) / dx[:, None, None]
+        if getattr(self, 'fullpot', False):
+            gm = self.gamma
+            q2 = (1.0 + phix_f) ** 2
+            rho_f = self._face_rho(phix_f)
+            Mface = (q2 * self.Minf ** 2
+                     / np.maximum(rho_f, 1e-9) ** (gm - 1))
+            return Mface > 1.0
         return self._coeff_A(phix_f) < 0
 
     def residual(self):
-        """Conservative TSD residual, compact finite-volume form.
+        """Conservative residual, compact finite-volume form.
 
+        Modes: linear (A const), TSD (A(phi), Murman-Cole), fullpot
+        (density-coupled exact potential with MC upwinding).
         Node divergence straight from face fluxes (no face-averaging:
         averaging widens the stencil to i+-2 with a checkerboard null
-        space that blows up SOR). Murman-Cole switching picks the
-        upwind flux at supersonic faces.
+        space that blows up SOR).
         """
         phi, nx, ny, nz = self.phi, self.nx, self.ny, self.nz
         dx, dy, dz = self.dx, self.dy, self.dz
+        fp = getattr(self, 'fullpot', False) and not self.linear
         R = np.zeros_like(phi)
         # ---- x ----
-        phix_f = (phi[1:, :, :] - phi[:-1, :, :]) / dx[:, None, None]
-        if self.linear:
-            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
-            Fx = A_f * phix_f
-        else:
-            # Frozen full coefficient (self._frozenA is not None): fixed
-            # linear operator across SOR epochs (nonlinear SOR needs it).
-            if self._frozenA is not None:
-                A_f = self._frozenA
-            else:
-                A_f = self._coeff_A(phix_f)
-            Fx = A_f * phix_f
-            # Murman-Cole: backward flux at supersonic faces.
-            # Frozen map (self._frozen is not None) keeps the operator
-            # fixed across SOR epochs (switching chatter stalls SOR).
-            sub = self._frozen if self._frozen is not None \
-                else self._sup_mask()
-            Fup = np.zeros_like(Fx)
-            Fup[1:] = A_f[1:] * (phi[1:-1, :, :] - phi[:-2, :, :]) / \
-                dx[:-1, None, None]
-            Fx = np.where(sub, Fup, Fx)
+        Fx, A_f, _sub = self._xflux(phi, dx)
         # control-volume widths (node-centered)
         wx = np.empty(nx)
         wx[1:-1] = 0.5 * (dx[:-1] + dx[1:])
@@ -216,8 +295,31 @@ class TSDSolver:
         # faces 0..nx-2; node i uses faces i-1, i
         R[1:-1, :, :] += (Fx[1:, :, :] - Fx[:-1, :, :]) / \
             wx[1:-1, None, None]
-        # ---- y (central) ----
+        # nodal density (fullpot only; TSD/linear use unit density)
+        rho_n = None
+        if fp:
+            gx = np.zeros_like(phi)
+            gx[1:-1] = (phi[2:] - phi[:-2]) / (
+                self.x[2:] - self.x[:-2])[:, None, None]
+            gy = np.zeros_like(phi)
+            gy[:, 1:-1] = (phi[:, 2:] - phi[:, :-2]) / (
+                self.y[2:] - self.y[:-2])[None, :, None]
+            gz = np.zeros_like(phi)
+            gz[:, :, 1:-1] = (phi[:, :, 2:] - phi[:, :, :-2]) / (
+                self.z[2:] - self.z[:-2])[None, None, :]
+            q2n = (1 + gx) ** 2 + gy ** 2 + gz ** 2
+            gm = self.gamma
+            q2max = 1 - (0.2 ** (gm - 1) - 1.0) * 2 / max(
+                (gm - 1) * self.Minf ** 2, 1e-9)
+            q2n = np.minimum(np.maximum(q2n, 0.0), q2max)
+            rho_n = np.maximum(
+                (1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2n)) ** (
+                    1 / (gm - 1)), 0.2)
+        # ---- y (central, density-weighted in fullpot) ----
         phiy_f = (phi[:, 1:, :] - phi[:, :-1, :]) / dy[None, :, None]
+        if fp:
+            rho_yf = 0.5 * (rho_n[:, :-1, :] + rho_n[:, 1:, :])
+            phiy_f = rho_yf * phiy_f
         wy = np.empty(ny)
         wy[1:-1] = 0.5 * (dy[:-1] + dy[1:])
         wy[0] = dy[0]
@@ -226,8 +328,7 @@ class TSDSolver:
             wy[None, 1:-1, None]
         # ---- z (central) + wake branch cut ----
         phiz_f = (phi[:, :, 1:] - phi[:, :, :-1]) / dz[None, None, :]
-        k0 = self.k0
-        # span-cell amplitude k (free bound vortex; ones = prescribed):
+        k0 = self.k0        # span-cell amplitude k (free bound vortex; ones = prescribed):
         # map each wake span cell onto the wing span grid
         _wpos = np.clip(np.searchsorted(self.wing_jy, self.wake_jy),
                         0, max(len(self.wing_jy) - 1, 0))
@@ -263,6 +364,9 @@ class TSDSolver:
         wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
         wz[0] = dz[0]
         wz[-1] = dz[-1]
+        if fp:
+            rho_zf = 0.5 * (rho_n[:, :, :-1] + rho_n[:, :, 1:])
+            phiz_f = rho_zf * phiz_f
         R[:, :, 1:-1] += (phiz_f[:, :, 1:] - phiz_f[:, :, :-1]) / \
             wz[None, None, 1:-1]
         # wing transpiration BC on z=0 plane (both sides)
@@ -400,10 +504,12 @@ class TSDSolver:
             if freeze_every and not self.linear:
                 if it % freeze_every == 0:
                     self._frozen = self._sup_mask()
-                    dx = self.dx
-                    phix = (self.phi[1:, :, :] - self.phi[:-1, :, :]) / \
-                        dx[:, None, None]
-                    self._frozenA = self._coeff_A(phix)
+                    self._frozenA = self._face_coeff()
+                    if getattr(self, 'fullpot', False):
+                        dx = self.dx
+                        phix = (self.phi[1:, :, :] - self.phi[:-1, :, :]) / \
+                            dx[:, None, None]
+                        self._frozenRho = self._face_rho(phix)
             # farfield tracks the ramp (frozen full-jump farfield against
             # partial interior jump destabilizes corners)
             if self.farfield is not None:
@@ -417,6 +523,13 @@ class TSDSolver:
             if use_lines:
                 self.line_relax(omega=0.8,
                                 direction=+1 if it % 2 == 0 else -1)
+                if not np.all(np.isfinite(self.phi)):
+                    bad = np.argwhere(~np.isfinite(self.phi))[0]
+                    print('NAN at it %d loc %s x=%.3f y=%.3f z=%.3f' % (
+                        it, bad, self.x[min(bad[0], self.nx - 1)],
+                        self.y[min(bad[1], self.ny - 1)],
+                        self.z[min(bad[2], self.nz - 1)]), flush=True)
+                    break
             else:
                 for mask in (red, ~red):
                     R = self.residual()
@@ -437,6 +550,7 @@ class TSDSolver:
                     break
         self._frozen = None  # release map (live evaluation afterwards)
         self._frozenA = None
+        self._frozenRho = None
         return self.phi
 
     def surface_cp(self):
@@ -488,6 +602,60 @@ class TSDSolver:
         kl2 = max(k0 - 2, 0)
         cpu = surf_cp(ku1, ku2)
         cpl = surf_cp(kl1, kl2)
+        CL = CD = 0.0
+        for i in self.wing_ix:
+            xc = self.xc[i] / self.chord
+            st = thickness_slope(xc, self.thick)
+            for j in self.wing_jy:
+                dA = dxi[min(i, len(dxi) - 1)] * self.dy[min(j, len(self.dy) - 1)]
+                CL += (cpl[i, j] - cpu[i, j]) * dA
+                CD += (cpu[i, j] - cpl[i, j]) * st * dA
+        S = self.chord * self.span
+        return {'CL': CL / S, 'CD': CD / S, 'cpu': cpu, 'cpl': cpl}
+
+    def fp_loads(self):
+        """Full-potential loads: isentropic Cp from surface Mach.
+
+        Cp = (2/gM^2)(p/pinf - 1) with p/pinf from local isentropic
+        Mach (extrapolated like loads()). Use instead of loads() in
+        fullpot mode (Cp = -2 phix is TSD-order, wrong at shocks).
+        """
+        k0 = self.k0
+        dxi = self.dx
+        gm = self.gamma
+
+        def gradx(k):
+            g = np.zeros((self.nx, self.ny))
+            g[1:-1] = (self.phi[2:, :, k] - self.phi[:-2, :, k]) / (
+                self.x[2:] - self.x[:-2])[:, None]
+            return g
+
+        def surf_gx(k1, k2):
+            z1 = self.z[k1]
+            z2 = self.z[k2]
+            w = abs(z2) / max(abs(z2 - z1), 1e-12)
+            return w * gradx(k1) + (1 - w) * gradx(k2)
+
+        ku1 = min(k0 + 1, self.nz - 1)
+        ku2 = min(k0 + 2, self.nz - 1)
+        kl1 = max(k0 - 1, 0)
+        kl2 = max(k0 - 2, 0)
+        gxu = surf_gx(ku1, ku2)
+        gxl = surf_gx(kl1, kl2)
+
+        def cp_of_g(gx):
+            q2 = np.maximum((1.0 + gx) ** 2, 1e-9)
+            # local Mach^2 from q (isentropic, normalized)
+            # p/pinf via Mach: solve M from q requires total; instead
+            # use density-based: rho from q, p/pinf = rho^gm
+            rho = np.maximum(
+                (1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2)) ** (
+                    1 / (gm - 1)), 0.2)
+            p_rat = rho ** gm
+            return 2.0 / (gm * self.Minf ** 2) * (p_rat - 1.0)
+
+        cpu = cp_of_g(gxu)
+        cpl = cp_of_g(gxl)
         CL = CD = 0.0
         for i in self.wing_ix:
             xc = self.xc[i] / self.chord
@@ -596,7 +764,7 @@ class TSDSolver:
         elif self._frozenA is not None:
             A_f = self._frozenA
         else:
-            A_f = self._coeff_A(phix_f)
+            A_f = self._face_coeff()
         maxupd = 0.0
         R = self.residual()
         # Jacobi-style: buffer all line updates from ONE residual, apply
