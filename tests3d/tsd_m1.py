@@ -12,9 +12,10 @@ from tsd_coupled import build_case, panel_aft_target
 from scipy.optimize import newton_krylov
 
 
-def run_m1(alpha_deg=1.25, fullpot=True):
+def run_m1(alpha_deg=1.25, fullpot=True, span=6.0):
     from wing3d.tsd import TSDSolver
-    s, res, mesh = build_case(1.0, alpha_deg, False, fullpot)
+    s, res, mesh = build_case(1.0, alpha_deg, False, fullpot, None,
+                              80, 32, 32, span)
     nphi = s.nx * s.ny * s.nz
     s.k[:] = 1.0
     tare = panel_aft_target(mesh, res, s.yc[s.wing_jy])

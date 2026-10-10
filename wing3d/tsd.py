@@ -207,7 +207,7 @@ class TSDSolver:
         """
         phix_f = (phi[1:, :, :] - phi[:-1, :, :]) / dx[:, None, None]
         if self.linear:
-            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
+            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 1e-6))
             return A_f * phix_f, A_f, np.zeros_like(A_f, dtype=bool)
         if getattr(self, 'fullpot', False):
             rho_f = self._frozenRho if self._frozenRho is not None \
@@ -252,7 +252,7 @@ class TSDSolver:
         dx = self.dx
         phix_f = (self.phi[1:, :, :] - self.phi[:-1, :, :]) / dx[:, None, None]
         if self.linear:
-            return np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
+            return np.full_like(phix_f, max(1 - self.Minf ** 2, 1e-6))
         if getattr(self, 'fullpot', False):
             if self._frozenRho is not None:
                 return self._frozenRho
@@ -480,7 +480,7 @@ class TSDSolver:
         wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
         wz[0] = dz[0]
         wz[-1] = dz[-1]
-        beta2 = max(1 - self.Minf ** 2, 0.05)
+        beta2 = max(1 - self.Minf ** 2, 1e-6)
         ax = np.empty(nx)
         ax[1:-1] = beta2 * (1 / (dx[:-1] * wx[1:-1]) + 1 / (dx[1:] * wx[1:-1]))
         ax[0] = beta2 * 2 / dx[0] ** 2
@@ -649,8 +649,8 @@ class TSDSolver:
             # p/pinf via Mach: solve M from q requires total; instead
             # use density-based: rho from q, p/pinf = rho^gm
             rho = np.maximum(
-                (1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2)) ** (
-                    1 / (gm - 1)), 0.2)
+                np.maximum(1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2),
+                           1e-9) ** (1 / (gm - 1)), 0.2)
             p_rat = rho ** gm
             return 2.0 / (gm * self.Minf ** 2) * (p_rat - 1.0)
 
@@ -760,7 +760,7 @@ class TSDSolver:
         wz[-1] = dz[-1]
         phix_f = (phi[1:, :, :] - phi[:-1, :, :]) / dx[:, None, None]
         if self.linear:
-            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 0.05))
+            A_f = np.full_like(phix_f, max(1 - self.Minf ** 2, 1e-6))
         elif self._frozenA is not None:
             A_f = self._frozenA
         else:
