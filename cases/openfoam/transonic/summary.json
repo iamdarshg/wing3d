@@ -1435,5 +1435,14 @@
    }
   ]
  },
- "audit_2026_10_08": "M0.95/M1.0/M1.1-a1.25 + M0.8-a4 withdrawn (all ran M0.8a8 misnormalized); reruns pending"
+ "audit_2026_10_08": "M0.95/M1.0/M1.1-a1.25 + M0.8-a4 withdrawn (all ran M0.8a8 misnormalized); reruns pending",
+ "m10a125": {
+  "cl": 0.0787,
+  "cd": 0.0771,
+  "mach": 1.0,
+  "alpha": 1.25,
+  "N2": true,
+  "verified": true,
+  "note": "TRUE M1.0 sonic anchor, rhoCentralFoam, 135k-cell regen mesh, converged End"
+ }
 }
