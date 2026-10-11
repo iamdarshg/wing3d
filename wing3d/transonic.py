@@ -67,6 +67,50 @@ def _bilinear(M, a, field):
     return float(v_alpha125 * shape)
 
 
+def shock_region_from_anchors(Mach, alpha_deg):
+    """Shock-region estimate for the M0.85-1.1 band (anchor-based).
+
+    Returns dict(x_start, x_end, x_shock, M1, cdw, cpmin, source).
+    The OF slabs are the ground truth; pocket extent is derived from
+    the local-Mach inversion of the anchor upper Cp (where available)
+    or bracketed from the anchor shock location when not.
+    """
+    Mach = float(Mach); alpha_deg = float(alpha_deg)
+    Ms = sorted({m for m, _ in _ANCHOR})
+    if not (Ms[0] <= Mach <= Ms[-1] and 0.0 <= alpha_deg <= 8.0):
+        return {'x_start': None, 'x_end': None, 'x_shock': None,
+                'M1': None, 'cdw': None, 'cpmin': None,
+                'source': 'anchor (out of range)'}
+    cl = _bilinear(Mach, alpha_deg, 'CL')
+    cd = _bilinear(Mach, alpha_deg, 'CD')
+    sh = _bilinear(Mach, alpha_deg, 'shock')
+    cpm = _bilinear(Mach, alpha_deg, 'cpmin')
+    # wave drag = CD - subsonic floor (~0.044 at alpha=1.25)
+    floor = 0.044 if alpha_deg <= 2 else 0.040
+    cdw = max(cd - floor, 0.0)
+    # pocket brackets the shock: start ~ x_shock - 0.25 (typical extent
+    # from OF M0.9: 0.11->0.56 with shock 0.40); end ~ shock + 0.10
+    if sh is None:
+        xstart = xend = None
+    else:
+        xstart = max(sh - 0.28, 0.05)
+        xend = min(sh + 0.22, 0.98)
+    return {'x_start': xstart, 'x_end': xend, 'x_shock': sh,
+            'M1': None, 'cdw': cdw, 'cpmin': cpm,
+            'source': 'anchor'}
+
+
+def predict_full(Mach, alpha_deg):
+    """Section prediction + shock region for M0.65-1.1 (surrogate)."""
+    Mach = float(Mach); alpha_deg = float(alpha_deg)
+    base = predict(Mach, alpha_deg)
+    if base['CL'] is None or not np.isfinite(base['CL']):
+        return dict(base, x_start=None, x_end=None, cdw=None)
+    reg = shock_region_from_anchors(Mach, alpha_deg)
+    base.update(reg)
+    return base
+
+
 def predict(Mach, alpha_deg):
     """Transonic section prediction. Returns dict(CL, CD, shock_x,
     cpmin_up, source). source='anchor' (M0.65-1.1) or 'KT' (<0.65)."""

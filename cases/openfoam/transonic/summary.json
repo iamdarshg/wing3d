@@ -1444,5 +1444,32 @@
   "N2": true,
   "verified": true,
   "note": "TRUE M1.0 sonic anchor, rhoCentralFoam, 135k-cell regen mesh, converged End"
+ },
+ "tsd_sup": {
+  "method": "TSD fullpot, inflow-pinned/outflow-free BC, AR1.6 matched, alpha=1.25",
+  "rows": [
+   {
+    "M": 1.0,
+    "CL": 0.0522,
+    "OF": 0.0787,
+    "err_pct": -33.7,
+    "note": "fixed-k (free-k degenerates at M=1.0); isentropic cap"
+   },
+   {
+    "M": 1.1,
+    "CL": 0.0524,
+    "OF": 0.0533,
+    "err_pct": -1.7,
+    "note": "supersonic branch, 97% field supersonic"
+   },
+   {
+    "M": 1.2,
+    "CL": 0.0525,
+    "OF": null,
+    "err_pct": null,
+    "note": "no OF anchor; trend flat"
+   }
+  ],
+  "key_milestone": "M1.0+ TSD now converges on the supersonic branch; M1.1 within -2% of OF anchor"
  }
 }

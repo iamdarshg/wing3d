@@ -80,11 +80,15 @@ def pocket_and_shock(x, cp0, Minf, smooth=2):
                 'cpstar': float('nan')}
     b = max(np.sqrt(max(1 - Minf ** 2, 1e-9)), 1e-9)
     cp0 = np.asarray(cp0, dtype=float)
-    # panel LE singularity spikes (Cp~-14 at nose) would fake a full-chord
-    # pocket; light smoothing preserves the physical suction shape
-    for _ in range(max(int(smooth), 0)):
-        cp0 = 0.25 * np.concatenate([[cp0[0]], cp0[:-1]]) + 0.5 * cp0 + \
-            0.25 * np.concatenate([cp0[1:], [cp0[-1]]])
+    # Do not let a single LE panel singularity define the shock strength.
+    # The first few stations are a geometric/panel singularity, not the
+    # physical pocket peak; use the first 5% only as a boundary, then find
+    # the peak from the remaining surface.
+    nle = max(1, int(0.05 * len(cp0)))
+    cp_work = cp0.copy()
+    if len(cp_work) > nle:
+        cp_work[:nle] = np.maximum(cp_work[:nle], np.min(cp_work[nle:]))
+    cp0 = cp_work
     cppg = cp0 / b
     cps = cp_star(Minf)
     sup = cppg < cps
@@ -114,22 +118,58 @@ def pocket_and_shock(x, cp0, Minf, smooth=2):
     return out
 
 
-def wave_drag(x, cp0, Minf, cal=1.0):
-    """Lock-type wave drag from pocket shock loss.
+def shock_region_metrics(x, cp0, Minf, gamma=1.4, smooth=2):
+    """Return auditable pocket, shock-boundary, and mixing diagnostics.
 
-    cdw = cal * (1 - p02/p01) * (pocket height fraction), with the
-    pocket height ~ local displacement (uses max thickness proxy).
-    cal calibrated vs Harris/OF (default 1.0 = uncalibrated).
-    Returns dict(cdw, x_shock, M1).
+    The pocket boundary is located by linear interpolation of Cp_PG-Cp*;
+    this avoids assigning a whole panel to the wrong sub/supersonic stream.
+    ``mixed_fraction`` is the fraction of chordwise intervals whose endpoints
+    straddle the sonic boundary. ``shock_jump`` is the modeled Cp jump at the
+    fitted shock. These are section diagnostics, not a CFD shock sensor.
     """
-    pk = pocket_and_shock(np.asarray(x), np.asarray(cp0), Minf)
-    if pk['x_shock'] is None:
-        return {'cdw': 0.0, 'x_shock': None, 'M1': 1.0}
-    loss = 1.0 - normal_shock_loss(pk['M1'])
-    # pocket vertical extent proxy: fraction of chord with supersonic Cp
-    frac = float(np.mean(pk['pocket']))
-    cdw = cal * loss * frac
-    return {'cdw': float(cdw), 'x_shock': pk['x_shock'], 'M1': pk['M1']}
+    x = np.asarray(x, dtype=float)
+    cp0 = np.asarray(cp0, dtype=float)
+    pk = pocket_and_shock(x, cp0, Minf, smooth=smooth)
+    if len(x) < 2 or Minf >= 1.0:
+        return dict(pk, x_start=None, x_end=None, pocket_fraction=0.0,
+                    mixed_fraction=0.0, shock_jump=0.0,
+                    wave_loss=0.0, cdw=0.0)
+    b = max(np.sqrt(max(1 - Minf ** 2, 1e-9)), 1e-9)
+    sm = cp0.copy()
+    nle = max(1, int(0.05 * len(sm)))
+    if len(sm) > nle:
+        sm[:nle] = np.maximum(sm[:nle], np.min(sm[nle:]))
+    for _ in range(max(int(smooth), 0)):
+        sm = 0.25 * np.r_[sm[0], sm[:-1]] + 0.5 * sm + 0.25 * np.r_[sm[1:], sm[-1]]
+    d = sm / b - cp_star(Minf, gamma)
+    cross = np.where(d[:-1] * d[1:] < 0)[0]
+    xb = []
+    for i in cross:
+        dd = d[i + 1] - d[i]
+        xb.append(float(x[i] - d[i] * (x[i + 1] - x[i]) /
+                        (dd if abs(dd) > 1e-30 else 1e-30)))
+    pocket = np.asarray(pk['pocket'], dtype=bool)
+    xs = xb[0] if xb else (float(x[pocket][0]) if pocket.any() else None)
+    xe = xb[-1] if xb else (float(x[pocket][-1]) if pocket.any() else None)
+    ish = pk.get('i_sh')
+    jump = 0.0
+    if ish is not None and 0 < ish < len(sm) - 1:
+        jump = float(abs(sm[ish + 1] / b - sm[ish - 1] / b))
+    loss = 1.0 - normal_shock_loss(pk.get('M1', 1.0))
+    frac = float(np.clip((xe - xs) if xs is not None and xe is not None else 0.0, 0, 1))
+    return dict(pk, x_start=xs, x_end=xe,
+                pocket_fraction=float(np.trapezoid(pocket.astype(float), x)),
+                mixed_fraction=float(len(cross) / max(len(x) - 1, 1)),
+                shock_jump=jump, wave_loss=float(loss), cdw=float(loss * frac))
+
+
+def wave_drag(x, cp0, Minf, cal=1.0):
+    """Lock-type wave drag with explicit sonic-boundary diagnostics."""
+    r = shock_region_metrics(x, cp0, Minf)
+    return {'cdw': float(cal * r['cdw']), 'x_shock': r['x_shock'],
+            'M1': r['M1'], 'pocket_fraction': r['pocket_fraction'],
+            'mixed_fraction': r['mixed_fraction'],
+            'shock_jump': r['shock_jump'], 'wave_loss': r['wave_loss']}
 
 
 def shock_fitted_cp(x, cp0, Minf, gamma=1.4, blend=0.25):
