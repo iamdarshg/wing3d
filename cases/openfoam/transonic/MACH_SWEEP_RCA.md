@@ -75,3 +75,46 @@ config CL(M) = CL0 * cl_sec(M)/cl_sec(M0.3) preserving config character.
 - F-16: CL rises 0.26 -> 0.37 across M0.9-1.05 -> matches fighter
   transonic polar character (sweep keeps normal flow subsonic).
 - F-5E M1.10 hits Mn=1.0 -> flagged, not extrapolated.
+
+## Shock-region audit + M1.0+ completion (2026-10-11)
+
+### Shock region (NACA0012 section, alpha=1.25)
+| M | pocket | frac | shock | M1 | Cdw_raw | shock% | Cdw% | flags |
+|---|---|---|---|---|---|---|---|---|
+| 0.75 | 0.03-0.31 | 0.27 | 0.25 | 1.09 | 0.0002 | - | - | ok |
+| 0.80 | 0.02-0.50 | 0.48 | 0.38 | 1.22 | 0.0044 | +9.9 | -2.2 | ok |
+| 0.85 | 0.02-0.66 | 0.65 | 0.48 | 1.40 | 0.0274 | - | - | LE-touch |
+| 0.885 | 0.01-0.75 | 0.74 | 0.52 | 1.60 | 0.0781 | +29.6 | +984 | LE-touch |
+| 0.90 | 0.01-0.78 | 0.77 | 0.53 | 1.73 | 0.1215 | - | - | LE-touch |
+| 0.95 | 0.01-0.85 | 0.84 | 0.28 | 5.00 | 0.7862 | -53 | +3643 | LE-touch |
+
+(shock%/Cdw% = vs OF anchors where available; Cdw_raw = (1-p02/p01)*frac)
+
+Findings:
+- Pocket shape/size tracks OF (OF M0.9: pocket 0.11-0.56, M1pk 1.35 vs our
+  0.01-0.78, M1 1.73). PG over-amplifies suction beyond ~M0.85 -> M1 too hot,
+  wave drag explodes (M0.95 Cdw +3643%). KT/PG validity caps at Mcrit.
+- "LE-touch" flags from M0.85 up: the LE panel singularity inflates the
+  pocket start even after the 5% clip. PHYSICAL pocket should start ~0.05-0.10.
+- Mixed (sub/sup interleaving) fraction stays ~0.7% of chord: one coherent
+  pocket, no islands -- consistent with OF single-pocket M0.8-0.9.
+- M1.0+ (PG singular): DELEGATED to TSD fullpot (below).
+
+### M1.0+ TSD completion (the ">0.9" work, fixed 2026-10-11)
+KEY FIX: inflow-pinned/outflow-free boundary conditions. At M>=1 the flow is
+hyperbolic-in-x; the old all-faces-free BC kept the solver on the subsonic
+branch (CL ~ 0.115, incompressible-like). Pinning the upstream face to phi=0
+(uniform supersonic inflow) and freeing the downstream face lets the full-pot
+solution snap to the supersonic branch. Also: free-k is unstable at M=1.0
+(k -> -0.13 degenerate root), so M1.0 uses fixed k; M1.1+ free-k works.
+
+| M | TSD CL (AR1.6) | OF anchor | err% | notes |
+|---|---|---|---|---|
+| 1.00 | 0.0522 | 0.0787 | -33.7 | isentropic cap (no entropy at bow shock); fixed-k |
+| 1.10 | 0.0524 | 0.0533 | -1.7 | supersonic branch, 97% field supersonic |
+| 1.20 | 0.0525 | - | - | no OF anchor; trend flat |
+
+- M1.1 within 2% of the OpenFOAM anchor: the supersonic branch is now real.
+- M1.0 residual -34% is the known full-potential entropy gap at the detached
+  bow shock (isentropic model cannot represent total-pressure loss; Euler can).
+- Run: tests3d/tsd_m_sup.py (M=1.0,1.1,1.2, AR1.6, alpha=1.25).

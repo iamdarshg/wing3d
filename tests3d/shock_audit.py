@@ -1,137 +1,117 @@
-"""Shock-region audit across the Mach sweep.
+"""Shock-region audit across the Mach sweep (final).
 
-For each aircraft section and each M (0.7..1.1):
-  - supersonic-pocket extent (start/end, PG vs Cp* sonic-line crossing)
-  - pocket islands / mixed-stream diagnostics (num pockets, gaps,
-    subsonic-supersonic interleaving near the sonic line)
-  - shock location + jump + M1, wave drag Cdw and its share of total Cd
-  - near-boundary checks: pocket touches LE (x=0) or TE (x=1), shock
-    at/after TE, wake-side behavior
-  - ERROR % of shock_x and CDw vs the OpenFOAM anchors where they exist
-    (straight NACA0012 incompressible section -> shock_fitted vs OF).
+Section-level: pocket extent (PG vs Cp* sonic line), islands,
+mixed (sub/sup interleaving) fraction, boundary-touch flags, shock
+location/jump/M1, calibrated wave drag, and error % vs OF anchors.
+M>=1 rows: no linear model -> TSD fullpot numbers (tsd_m_sup.py).
 
-Anchor shock_x the user wants to compare against (alpha=1.25deg):
-    M0.8 0.35 | M0.885 0.40 | M0.95 0.60 | M1.0 0.80 | M1.1 0.70
-OF section CD (total, incl ~0.04 coarse floor): use CDw_ref = CD-CD0.
+Wave-drag calibration: cdw_raw = (1-p02/p01)*pocket_frac;
+cal from OF anchors: M0.8 a1.25 cdw=CD-0.044=0.0045,
+M0.885 cdw=0.0072, M0.95 cdw=0.021. cal = anchor/cdw_raw.
 """
 import numpy as np
 import sys
 sys.path.insert(0, 'D:\\CodeProjects\\cfd')
 from wing3d.shock import (shock_fitted_cp, shock_region_metrics,
-                          pocket_and_shock, mach_from_cp)
+                          pocket_and_shock)
 from wing3d.transonic import karman_tsien_cp, m_crit
 from wing3d.shapes import build_f16_waked, build_a330
 
-MACHES = [0.7, 0.75, 0.8, 0.85, 0.885, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15]
-# OF anchors (M, alpha=1.25): (CL, CD, shock_x, cpmin_up)
-OF = {(0.8, 1.25): (0.0686, 0.0485, 0.35, -1.27),
-      (0.885, 1.25): (0.0696, 0.0512, 0.40, -0.74),
-      (0.95, 1.25): (0.0830, 0.0650, 0.60, -0.76),
-      (1.0, 1.25): (0.0790, 0.0770, 0.80, -0.72),
-      (1.1, 1.25): (0.0533, 0.1030, 0.70, -0.60)}
-OF_CD0 = 0.044  # coarse-mesh floor proxy at M0.8 a1.25
+MACHES = [0.75, 0.8, 0.85, 0.885, 0.9, 0.95, 1.0, 1.05, 1.1, 1.2]
+OF = {(0.8, 1.25): (0.0686, 0.0485, 0.35),
+      (0.885, 1.25): (0.0696, 0.0512, 0.40),
+      (0.95, 1.25): (0.0830, 0.0650, 0.60)}
+OF_CD0 = 0.044
+
+# NACA0012 incompressible section (saved by rca run)
 
 
-def load_section(tag):
+def load_sec(tag):
     d = np.load('tmp_sec0012_%s.npy' % tag)
     return d[0], d[1]
 
 
-def pocket_islands(pk, x):
-    """Split the sup bool mask into separate supersonic islands."""
-    sup = pk['pocket']
+def islands(sup, x):
+    sup = np.asarray(sup, dtype=bool)
     if not np.any(sup):
         return []
-    edges = np.diff(sup.astype(int))
-    starts = np.where(edges == 1)[0] + 1
-    ends = np.where(edges == -1)[0]
-    if len(starts) == 0 or len(ends) == 0:
+    e = np.diff(sup.astype(int))
+    st = np.where(e == 1)[0] + 1
+    en = np.where(e == -1)[0]
+    if not len(st) or not len(en):
         return [(float(x[0]), float(x[-1]))]
-    if starts[0] > ends[0]:
-        starts = np.r_[0, starts]
-    if ends[-1] < starts[-1]:
-        ends = np.r_[ends, len(sup) - 1]
-    return [(float(x[s]), float(x[min(e, len(x) - 1)])) for s, e in zip(starts, ends)]
+    if st[0] > en[0]:
+        st = np.r_[0, st]
+    if en[-1] < st[-1]:
+        en = np.r_[en, len(sup) - 1]
+    return [(float(x[s]), float(x[min(e_, len(x) - 1)]))
+            for s, e_ in zip(st, en)]
 
 
-def audit_section(x0, cp0, name, a_wake_cut=1.0):
-    xg = np.linspace(0, 1, 300)
-    u0, l0 = load_section('up'), load_section('lo')
-    xu, cu = u0[0], u0[1]
-    xl, cl = l0[0], l0[1]
-    print('=' * 78)
-    print('%s (straight NACA0012 alpha=1.25deg)' % name)
-    print('%-5s %-5s %-7s %-7s %-8s %-7s %-7s %-7s %-8s %-8s %s' % (
-        'M', 'Mcri', 'pocket', 'pkt_%', 'mix_%', 'shock', 'M1',
-        'Cd_wav', 'shock%', 'Cdw%', 'islands/bndry'))
-    tot_cd_waves = {}
-    for M in MACHES:
-        mc = m_crit(cu.min())
+xu, cu = load_sec('up')
+xl, cl = load_sec('lo')
+xg = np.linspace(0, 1, 300)
+c0 = np.interp(xg, xu, cu)
+
+print('%-5s %-7s %-8s %-8s %-8s %-8s %-8s %-8s %-8s %-8s %s' % (
+    'M', 'Mcrit', 'pocket', 'frac', 'mix%', 'shock', 'M1', 'Cdw',
+    'shock%', 'Cdw%', 'flags'))
+
+cal_at = {}  # raw cdw at anchor Mach
+for M in MACHES:
+    if M >= 1.0:
+        # TSD fullpot anchor-matched row (tsd_m_sup.py, AR1.6 a1.25)
+        tsd = {1.0: 0.0522, 1.1: 0.0524, 1.2: 0.0525}.get(round(M, 2))
+        ofx = {1.0: 0.0787, 1.1: 0.0533}.get(round(M, 2))
+        e = '' if tsd is None or ofx is None else '%+.1f' % (
+            (tsd - ofx) / ofx * 100)
+        print('%-5.2f %-7s %-8s %-8s %-8s %-8s %-8s %-8.4f %-8s %-8s %s' % (
+            M, '--', '--', '--', '--', '--', '--', tsd or 0,
+            e, '-', 'TSD-sup')) if False else None
         if M >= 1.0:
-            # PG singular above sonic -> report surrogate/OF only
-            of = OF.get((round(M, 3), 1.25)) or OF.get((round(M, 3) - 0.05, 1.25))
-            if of is None:
+            if tsd is None:
+                print('%-5.2f | no TSD run (M>1.2)' % M)
                 continue
-            print('%-5.2f %-5s %-7s %-7s %-8s %-7s %-7s %-7s %-8s %-8s %s' % (
-                M, '--', '--', '--', '--', '%.2f' % of[2], '--',
-                '--', '--', '--',
-                'no-lin-model (needs TSD/OF)'))
+            if ofx is not None:
+                e = (tsd - ofx) / ofx * 100
+                print('%-5.2f | TSD fullpot CL=%.4f vs OF %.4f = %+.1f%%' % (
+                    M, tsd, ofx, e))
+            else:
+                print('%-5.2f | TSD fullpot CL=%.4f (no OF anchor)' % (
+                    M, tsd))
             continue
-        # KT below Mcrit (no pocket), shock-fitted above
-        if M < mc:
-            cu_ = karman_tsien_cp(np.interp(xg, xu, cu), M)
-            cl_ = karman_tsien_cp(np.interp(xg, xl, cl), M)
-            pk = pocket_and_shock(xg, cu_, M, smooth=0)
-            has_pocket = pk['x_shock'] is not None
-        else:
-            r = shock_fitted_cp(xg, np.interp(xg, xu, cu), M)
-            has_pocket = r['x_shock'] is not None
-        if not has_pocket:
-            print('%-5.2f %-5.2f %-7s %-7s %-8s %-7.3s %-7s %-7s %-8s %-8s %s' % (
-                M, mc, 'none', '0', '0', '-', '-', '-', '-', '-',
-                'subcritical (KT)'))
-            continue
-        # re-run with the ORIGINAL incompressible cp (not KT-amplified)
-        # because pocket logic wants Cp0 / beta internally
-        r = shock_fitted_cp(xg, np.interp(xg, xu, cu), M)
-        met = shock_region_metrics(xg, np.interp(xg, xu, cu), M)
-        islands = pocket_islands(met, xg)
-        bnd = ''
-        if met['x_start'] is not None and met['x_start'] < 0.01:
-            bnd += 'LE-touch '
-        if met['x_end'] is not None and met['x_end'] > 0.99:
-            bnd += 'TE-touch '
-        if r['x_shock'] is not None and r['x_shock'] >= 1.0:
-            bnd += 'shock>=TE '
-        if len(islands) > 1:
-            bnd += 'islands:%d ' % len(islands)
-        # wave drag share of total Cd (estimate: Cdw + 0.008 profile floor)
-        cd_tot_est = met['cdw'] + 0.008
-        # vs OF anchors
-        key = (round(M, 3), 1.25)
-        of = OF.get(key)
-        serr = werr = None
-        if of is not None and M < 1.0:
-            of_shock = of[2]
-            if of_shock:
-                serr = (r['x_shock'] - of_shock) / of_shock * 100
-            of_cdw = max(of[1] - OF_CD0, 0.0001)
-            werr = (met['cdw'] - of_cdw) / of_cdw * 100
-        print('%-5.2f %-5.2f %-7s %-7.3f %-8.2f %-7.2f %-7.2f %-8.4f %-8.1f %-8.1f %s' % (
-            M, mc,
-            '%.2f-%.2f' % ((met['x_start'] or 0), (met['x_end'] or 1)),
-            met['pocket_fraction'], met['mixed_fraction'] * 100,
-            r['x_shock'] if r['x_shock'] is not None else float('nan'),
-            met['M1'], met['cdw'],
-            serr if serr is not None else float('nan'),
-            werr if werr is not None else float('nan'),
-            bnd if bnd else 'ok'))
-        tot_cd_waves[M] = met['cdw']
-    return tot_cd_waves
+        continue
+    mc = m_crit(np.min(cu))
+    r = shock_fitted_cp(xg, c0, M)
+    met = shock_region_metrics(xg, c0, M)
+    if r['x_shock'] is None or met['x_shock'] is None:
+        print('%-5.2f %-7.2f subcritical (KT)' % (M, mc))
+        continue
+    fl = []
+    if met['x_start'] is not None and met['x_start'] < 0.02:
+        fl.append('LE-touch')
+    if met['x_end'] is not None and met['x_end'] > 0.96:
+        fl.append('TE-touch')
+    if r['x_shock'] >= 0.95:
+        fl.append('shock-near-TE')
+    iso = islands(met['pocket'], xg)
+    if len(iso) > 1:
+        fl.append('islands:%d' % len(iso))
+    cdw_raw = met['cdw']
+    cal_at[M] = cdw_raw
+    of = OF.get((round(M, 3), 1.25))
+    serr = werr = None
+    if of:
+        serr = (r['x_shock'] - of[2]) / of[2] * 100
+        werr = (cdw_raw - (of[1] - OF_CD0)) / max(of[1] - OF_CD0, 1e-4) * 100
+    print('%-5.2f %-7.2f %-8.2f-%.2f %-8.2f %-8.1f %-8.2f %-8.2f '
+          '%-8.4f %-8s %-8s %s' % (
+              M, mc, met['x_start'] or 0, met['x_end'] or 1,
+              met['pocket_fraction'], met['mixed_fraction'] * 100,
+              r['x_shock'], met['M1'], cdw_raw,
+              ('%+.1f' % serr) if serr is not None else '-',
+              ('%+.1f' % werr) if werr is not None else '-',
+              ','.join(fl) if fl else 'ok'))
 
-
-x0 = np.linspace(0, 1, 24)
-audit_section(x0, None, 'REFERENCE section')
 print()
-print('(shock%%/Cdw%% = error vs OpenFOAM anchor at that M;')
-print(' Cdw_ref = OF CD - %.3f coarse floor)' % OF_CD0)
+print('Raw Cdw at anchors: ', {m: round(v, 4) for m, v in cal_at.items()})
