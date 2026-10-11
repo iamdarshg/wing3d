@@ -153,8 +153,19 @@ def panel_ibl_map(mesh, lines, nu):
     sep = np.zeros(n, dtype=bool)
     count = np.zeros(n)
     nsep_lines = 0
+    nskip_lines = 0
     for ln in lines:
-        r = solve_streamline(ln['s'], ln['Ue'], nu)
+        try:
+            s = np.asarray(ln['s'], dtype=float)
+            Ue = np.asarray(ln['Ue'], dtype=float)
+            ok = np.isfinite(s) & np.isfinite(Ue) & (Ue > 1e-9)
+            if ok.sum() < 5 or np.ptp(s[ok]) <= 0:
+                nskip_lines += 1
+                continue
+            r = solve_streamline(s[ok], Ue[ok], nu)
+        except Exception:
+            nskip_lines += 1
+            continue
         if r['separated']:
             nsep_lines += 1
         F = r['Ue'] * r['dstar']
