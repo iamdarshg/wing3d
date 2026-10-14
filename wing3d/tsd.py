@@ -89,13 +89,46 @@ def thickness_slope(xc, t=0.12):
     return d
 
 
+def section_profile_xy(x, y_up, y_lo, n=400):
+    """Build slope/thickness interpolants from an arbitrary airfoil.
+
+    x, y_up, y_lo: chord-normalized coordinates (upper/lower as functions
+    of x, LE->TE). Returns dict with 'slope' (d(y_up-y_lo)/2/dx) and
+    'half' (half-thickness) callables of x/c, plus the raw points.
+    """
+    x = np.clip(np.asarray(x, dtype=float), 0, 1)
+    y_up = np.asarray(y_up, dtype=float)
+    y_lo = np.asarray(y_lo, dtype=float)
+    order = np.argsort(x)
+    x = x[order]; y_up = y_up[order]; y_lo = y_lo[order]
+    # duplicate LE/TE points to make the interpolant stable at ends
+    half = 0.5 * (y_up - y_lo)
+    # slope via central differences on the half-thickness
+    hx = np.hstack([0, np.cumsum(np.hypot(np.diff(x), np.diff(half)))])
+    # resample on uniform x/c for a smooth slope
+    xg = np.linspace(0, 1, n)
+    hg = np.interp(xg, x, half)
+    slope = np.gradient(hg, xg)
+
+    def slope_fn(xc):
+        xc = np.clip(np.asarray(xc, dtype=float), 0, 1)
+        return np.interp(xc, xg, slope)
+
+    def half_fn(xc):
+        xc = np.clip(np.asarray(xc, dtype=float), 0, 1)
+        return np.interp(xc, xg, hg)
+
+    return {'slope': slope_fn, 'half': half_fn, 'x': xg,
+            'half_thickness': hg, 'slope_arr': slope}
+
+
 class TSDSolver:
     def __init__(self, Minf, alpha_deg=0.0, chord=1.0, span=6.0,
                  thick=0.12, gamma=1.4, nx=100, ny=40, nz=40,
                  omega=1.5, wake_gamma=None, wake_xmax=None,
                  farfield=None, wake_sign=+1.0, linear=False,
                  bound_ramp=True, wing_jump=None, fullpot=False,
-                 box=None):
+                 box=None, profile=None):
         self.Minf = Minf
         self.linear = linear  # freeze A = 1-Min^2 (diagnostic linear regime)
         # full potential (density-coupled exact potential, valid to M1+)
@@ -110,6 +143,7 @@ class TSDSolver:
         self.chord = chord
         self.span = span
         self.thick = thick
+        self.profile = profile  # optional section_profile_xy dict
         self.gamma = gamma
         self.omega = omega
         # wake circulation distribution Gamma(y) (from panel Kutta solution;
@@ -394,7 +428,10 @@ class TSDSolver:
             return R
         II, JJ = np.meshgrid(iu, jy, indexing='ij')
         xc = self.xc[iu] / self.chord
-        slope_t = thickness_slope(xc, self.thick)[:, None]
+        if self.profile is not None:
+            slope_t = self.profile['slope'](xc)[:, None]
+        else:
+            slope_t = thickness_slope(xc, self.thick)[:, None]
         # NOTE: no cap here (cap kills LE suction); Newton-Krylov handles
         # the stiff LE source robustly where SOR blew up.
         wu = slope_t - self.alpha
@@ -444,7 +481,8 @@ class TSDSolver:
                             nx=self.nx, ny=self.ny, nz=self.nz,
                             omega=1.2,
                             wake_gamma=None, farfield=self.farfield,
-                            linear=True, bound_ramp=self.bound_ramp)
+                            linear=True, bound_ramp=self.bound_ramp,
+                            profile=self.profile)
             lin.wake_G = self.wake_G.copy()
             lin.wake_scale = 1.0
             lin.solve(itmax=400, tol=1e-6, verbose=False, ramp=0,
@@ -605,7 +643,10 @@ class TSDSolver:
         CL = CD = 0.0
         for i in self.wing_ix:
             xc = self.xc[i] / self.chord
-            st = thickness_slope(xc, self.thick)
+            if self.profile is not None:
+                st = self.profile['slope'](xc)
+            else:
+                st = thickness_slope(xc, self.thick)
             for j in self.wing_jy:
                 dA = dxi[min(i, len(dxi) - 1)] * self.dy[min(j, len(self.dy) - 1)]
                 CL += (cpl[i, j] - cpu[i, j]) * dA
@@ -659,7 +700,10 @@ class TSDSolver:
         CL = CD = 0.0
         for i in self.wing_ix:
             xc = self.xc[i] / self.chord
-            st = thickness_slope(xc, self.thick)
+            if self.profile is not None:
+                st = self.profile['slope'](xc)
+            else:
+                st = thickness_slope(xc, self.thick)
             for j in self.wing_jy:
                 dA = dxi[min(i, len(dxi) - 1)] * self.dy[min(j, len(self.dy) - 1)]
                 CL += (cpl[i, j] - cpu[i, j]) * dA

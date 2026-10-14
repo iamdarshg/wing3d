@@ -30,22 +30,65 @@ _ANCHOR = {
     (1.00, 1.25): (0.0790, 0.0770, 0.80, -0.72),
     (1.10, 1.25): (0.0533, 0.1030, 0.70, -0.60),
 }
+# Fine-mesh (86k-cell, AR1.6, a=1.25, rhoCentralFoam, N2 gas) campaign
+# 2026-10-13: supersedes the coarse 12k-cell rows above. CL/CD here are
+# the higher-fidelity anchors; CD floor ~0.038-0.040 vs old ~0.044
+# spurious floor. Old rows kept for provenance/alpha-shape (a=0/4/8
+# still only exist on the old M0.8 row).
+_ANCHOR_FINE = {
+    0.850: (0.0728, 0.0358),
+    0.875: (0.0743, 0.0401),
+    0.900: (0.0774, 0.0462),
+    0.925: (0.0799, 0.0529),
+    0.950: (0.0800, 0.0565),
+    0.975: (0.0727, 0.0510),
+    1.000: (0.0628, 0.0419),
+    1.025: (0.0590, 0.0381),
+    1.050: (0.0579, 0.0375),
+    1.075: (0.0579, 0.0389),
+    1.100: (0.0560, 0.0376),
+}
 
 _MACH = sorted({m for m, _ in _ANCHOR})
 _ALPHA = [0.0, 1.25, 4.0, 8.0]  # alpha nodes of the M0.8 row
 
 
 def _bilinear(M, a, field):
-    """Bilinear interpolation on the anchor grid. NaN outside."""
+    """Bilinear interpolation on the anchor grid. NaN outside.
+
+    Mach slice at a=1.25 uses the fine-mesh campaign (86k cells) when
+    available; alpha shape comes from the legacy M0.8 row (only old rows
+    have a=0/4/8). shock_x/cpmin legacy-only (not re-extracted in the
+    fine campaign).
+    """
     idx = {'CL': 0, 'CD': 1, 'shock': 2, 'cpmin': 3}[field]
     Ms = sorted({m for m, _ in _ANCHOR})
+    fine = _ANCHOR_FINE
+    if field in ('CL', 'CD') and min(fine) <= M <= max(fine):
+        fi = 0 if field == 'CL' else 1
+        fm = sorted(fine)
+        i = max(j for j, m in enumerate(fm) if m <= M)
+        i = min(i, len(fm) - 2)
+        t = (M - fm[i]) / (fm[i + 1] - fm[i])
+        v125 = (1 - t) * fine[fm[i]][fi] + t * fine[fm[i + 1]][fi]
+        # alpha shape from the legacy table (a=0/1.25/4/8 at M0.8 row +
+        # Mach series at a=1.25): use the old value ratio
+        As = [0.0, 1.25, 8.0]
+        jd = max(j for j, aa in enumerate(As) if aa <= a)
+        jd = min(jd, len(As) - 2)
+        s = (a - As[jd]) / (As[jd + 1] - As[jd])
+        b0 = _ANCHOR[(0.8, As[jd])][idx]
+        b1 = _ANCHOR[(0.8, As[jd + 1])][idx]
+        ref = _ANCHOR[(0.8, 1.25)][idx]
+        if None in (b0, b1, ref) or abs(ref) < 1e-12:
+            return float('nan')
+        return float(v125 * ((1 - s) * b0 + s * b1) / ref)
+    # legacy route
     As = [0.0, 1.25, 8.0]
     if not (Ms[0] <= M <= Ms[-1] and As[0] <= a <= As[-1]):
         return float('nan')
-    # Mach slice at alpha=1.25 + alpha scaling from M0.8 row
     def row(Mm, aa):
         return _ANCHOR.get((Mm, aa), (None,) * 4)[idx]
-    # interpolate along Mach at 1.25
     i = max(i for i, m in enumerate(Ms) if m <= M)
     i = min(i, len(Ms) - 2)
     m0, m1 = Ms[i], Ms[i + 1]
@@ -54,7 +97,6 @@ def _bilinear(M, a, field):
     if v0 is None or v1 is None:
         return float('nan')
     v_alpha125 = (1 - t) * v0 + t * v1
-    # alpha correction from M0.8 row shape
     j = max(j for j, aa in enumerate(As) if aa <= a)
     j = min(j, len(As) - 2)
     a0, a1 = As[j], As[j + 1]
@@ -77,7 +119,9 @@ def shock_region_from_anchors(Mach, alpha_deg):
     """
     Mach = float(Mach); alpha_deg = float(alpha_deg)
     Ms = sorted({m for m, _ in _ANCHOR})
-    if not (Ms[0] <= Mach <= Ms[-1] and 0.0 <= alpha_deg <= 8.0):
+    m_lo = min(Ms[0], min(_ANCHOR_FINE))
+    m_hi = max(Ms[-1], max(_ANCHOR_FINE))
+    if not (m_lo <= Mach <= m_hi and 0.0 <= alpha_deg <= 8.0):
         return {'x_start': None, 'x_end': None, 'x_shock': None,
                 'M1': None, 'cdw': None, 'cpmin': None,
                 'source': 'anchor (out of range)'}
@@ -121,7 +165,9 @@ def predict(Mach, alpha_deg):
                 'shock_x': None, 'cpmin_up': None,
                 'source': 'KT (use panel+karman_tsien)'}
     Ms = sorted({m for m, _ in _ANCHOR})
-    if not (Ms[0] <= Mach <= Ms[-1] and 0.0 <= alpha_deg <= 8.0):
+    m_lo = min(Ms[0], min(_ANCHOR_FINE))
+    m_hi = max(Ms[-1], max(_ANCHOR_FINE))
+    if not (m_lo <= Mach <= m_hi and 0.0 <= alpha_deg <= 8.0):
         return {'CL': float('nan'), 'CD': float('nan'),
                 'shock_x': None, 'cpmin_up': None,
                 'source': 'anchor (out of range)'}

@@ -189,7 +189,9 @@ def read_stl(path):
     if len(data) > 84:
         count = int.from_bytes(data[80:84], 'little')
         if len(data) == 84 + count * 50:
-            tris = np.frombuffer(data[84:], dtype=np.float32).reshape(count, -1)[:, 3:12].reshape(count, 3, 3)
+            raw = np.frombuffer(data[84:], dtype=np.uint8).reshape(count, 50)
+            f32 = raw[:, :48].view(np.float32)
+            tris = f32[:, 3:12].reshape(count, 3, 3)
     if tris is None:
         text = data.decode('utf-8', errors='ignore')
         import re
