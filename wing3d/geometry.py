@@ -108,9 +108,32 @@ def naca4_section(code='0012', n=60, cosine=True):
     return loop
 
 
+def section_loop(xu, yu, xl, yl, n=60):
+    """Airfoil loop (TE -> upper -> LE -> lower) from surface coordinates.
+
+    Same convention as naca4_section output: cosine-clustered stations,
+    upper TE->LE then lower LE+1->TE. Handles either input ordering.
+    """
+    xu = np.asarray(xu, float)
+    yu = np.asarray(yu, float)
+    xl = np.asarray(xl, float)
+    yl = np.asarray(yl, float)
+    if xu[0] > xu[-1]:
+        xu, yu = xu[::-1], yu[::-1]
+    if xl[0] > xl[-1]:
+        xl, yl = xl[::-1], yl[::-1]
+    beta = np.linspace(0.0, np.pi, n + 1)
+    xg = 0.5 * (1.0 - np.cos(beta))
+    yu_g = np.interp(xg, xu, yu)
+    yl_g = np.interp(xg, xl, yl)
+    upper = np.stack([xg, yu_g], axis=1)[::-1]   # TE -> LE
+    lower = np.stack([xg, yl_g], axis=1)[1:]     # LE+1 -> TE
+    return np.vstack([upper, lower])
+
+
 def build_wing(code='0012', span=6.0, chord=1.0, taper=1.0, sweep_deg=0.0,
                dihedral_deg=0.0, twist_deg=0.0, n_chord=40, n_span=12,
-               full=True, te_gap=0.002, cosine=True):
+               full=True, te_gap=0.002, cosine=True, section=None):
     """Structured full-wing mesh. x chordwise, y spanwise, z up.
 
     te_gap: finite trailing-edge thickness (fraction of chord, default
@@ -122,12 +145,22 @@ def build_wing(code='0012', span=6.0, chord=1.0, taper=1.0, sweep_deg=0.0,
     if te_gap > 0.003:
         import warnings
         warnings.warn('te_gap > 0.003 may destabilize the wake coupling')
-    loop = naca4_section(code, n_chord, cosine=cosine).copy()
+    if section is not None:
+        # custom section loop (TE -> upper -> LE -> lower), e.g. built
+        # with section_loop(); replaces the NACA-4 digit section.
+        loop = np.asarray(section, float).copy()
+    else:
+        loop = naca4_section(code, n_chord, cosine=cosine).copy()
     finite_base = te_gap > 0
     if finite_base:
-        # open the loop: upper TE up, lower TE down; base closed below
-        loop[0, 1] += te_gap / 2
-        loop[-1, 1] -= te_gap / 2
+        # target a TOTAL trailing-edge gap of te_gap. Sections that are
+        # already open (finite-TE airfoils like DFVLR R4) get closed down;
+        # closed sections get opened up. Gaps above ~0.003 destabilize
+        # the wake coupling.
+        cur = loop[0, 1] - loop[-1, 1]
+        adj = (te_gap - cur) / 2.0
+        loop[0, 1] += adj
+        loop[-1, 1] -= adj
     nl = len(loop)
     sweep = np.tan(np.radians(sweep_deg))
     dih = np.tan(np.radians(dihedral_deg))

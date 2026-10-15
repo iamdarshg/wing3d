@@ -16,8 +16,9 @@ from scipy.optimize import newton_krylov
 
 
 def build_case(Minf, alpha_deg, linear, fullpot=False, box=None,
-               nx=80, ny=32, nz=32, span=6.0):
-    mesh = build_wing('0012', span=span, chord=1.0, n_chord=24, n_span=12)
+               nx=80, ny=32, nz=32, span=6.0, section=None):
+    mesh = build_wing('0012', span=span, chord=1.0, n_chord=24, n_span=12,
+                      section=section)
     wakes = build_wake_from_meta(mesh)
     A, Brow = assemble(mesh, wakes, kutta_mode='doublet')
     a = np.radians(alpha_deg)

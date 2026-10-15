@@ -19,8 +19,16 @@ from tsd_coupled import build_case
 from scipy.optimize import newton_krylov
 
 
-def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None):
-    s, res, mesh = build_case(M, 1.25, False, True, None, 80, 32, 32, span)
+def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
+            base=None):
+    if base is None:
+        s, res, mesh = build_case(M, 1.25, False, True, None, 80, 32, 32,
+                                  span, section=section)
+    else:
+        # reuse a prebuilt state: panel/imprint is Mach-independent, only
+        # the operator coefficients depend on Minf (read live in residual)
+        s = base
+    s.Minf = M
     if profile is not None:
         s.profile = profile
     # strip panel imprints that lock the subsonic circulation:

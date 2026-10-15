@@ -1,0 +1,29 @@
+FoamFile { version 2.0; format ascii; class dictionary; object snappyHexMeshDict; }
+castellatedMesh true; snap true; addLayers true;
+geometry { dfvlr_r4.stl { type triSurfaceMesh; file "dfvlr_r4.stl"; }
+ wakebox { type searchableBox; min (0 -0.8 -0.6); max (4 0.8 0.6); } }
+castellatedMeshControls {
+ maxLocalCells 40000; maxGlobalCells 65000; minRefinementCells 10;
+ maxLoadUnbalance 0.1; nCellsBetweenLevels 3;
+ features ();
+ refinementSurfaces { dfvlr_r4.stl { level (3 4); patchInfo { type wall; } } }
+ resolveFeatureAngle 25;
+ refinementRegions {
+  dfvlr_r4.stl { mode distance; levels ((0.15 3) (0.4 2)); }
+  wakebox { mode inside; levels ((1E15 2)); } }
+ locationInMesh (5.5 0 0);
+ allowFreeStandingZoneFaces true;
+}
+snapControls { nSmoothPatch 3; tolerance 2.0; nSolveIter 30; nRelaxIter 5; }
+addLayersControls {
+ relativeSizes false;
+ layers { "dfvlr_r4.stl" { nSurfaceLayers 4; } }
+ expansionRatio 1.2; finalLayerThickness 2e-4; minThickness 1e-5;
+ nGrow 0; featureAngle 60; slipFeatureAngle 30; nRelaxIter 5;
+ nSmoothSurfaceNormals 1; nSmoothNormals 3; nSmoothThickness 10;
+ maxFaceThicknessRatio 0.5; maxThicknessToMedialRatio 0.3;
+ minMedianAxisAngle 90; minMedialAxisAngle 90; nBufferCellsNoExtrude 0;
+ nLayerIter 50; }
+meshQualityControls { #include "meshQualityDict" nSmoothScale 4; errorReduction 0.75; }
+writeFlags (scalarLevels layerSets);
+mergeTolerance 1e-6;

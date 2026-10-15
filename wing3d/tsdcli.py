@@ -16,6 +16,12 @@ import sys
 
 import numpy as np
 
+# campaign-validated solver path: tests3d/ is repo-adjacent, not installed
+_TESTS3D = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), 'tests3d')
+if _TESTS3D not in sys.path:
+    sys.path.insert(0, _TESTS3D)
+
 
 def extract_section(mesh, station=None, n=400):
     """Slice an airfoil section out of an STL mesh.
@@ -45,26 +51,63 @@ def extract_section(mesh, station=None, n=400):
     P = V[m]
     x1, x2 = P[:, ch].min(), P[:, ch].max()
     chord = max(x2 - x1, 1e-12)
-    xq = np.linspace(x1, x2, n)
-    # group by chord position, upper/lower by thickness coordinate
-    binw = chord / (n - 1)
-    idx = np.clip(np.round((P[:, ch] - x1) / binw).astype(int), 0, n - 1)
-    # classify per bin by median split: upper/lower x-coordinates interleave
-    # (surfaces have different x-distributions), so a bin can catch only one
-    # side -- a naive min/max over the bin would then assign the upper value
-    # to yl. Median-split keeps the two surfaces separate; missing sides are
-    # filled by interpolation below.
+    z = P[:, th]
+    xe = P[:, ch]
+    # pass 1: coarse uniform bins give a robust mean-line reference (this
+    # is the binning verified against the campaign tables during geo
+    # reconciliation). Pass 2 reuses it to classify upper/lower instead of
+    # a per-bin median split: thin cosine bins can catch points of only
+    # one surface, and a median split would then misassign them.
+    n0 = 200
+    xq0 = np.linspace(x1, x2, n0)
+    bw0 = chord / (n0 - 1)
+    idx0 = np.clip(np.round((xe - x1) / bw0).astype(int), 0, n0 - 1)
+    mu0 = np.full(n0, np.nan)
+    ml0 = np.full(n0, np.nan)
+    for k in range(n0):
+        zz = z[idx0 == k]
+        if len(zz) == 0:
+            continue
+        zm = np.median(zz)
+        u = zz[zz > zm]
+        l = zz[zz < zm]
+        if len(u) == 0 and len(l) == 0:
+            mu0[k] = ml0[k] = zm          # tip bin: surfaces meet at zm
+            continue
+        if len(u):
+            mu0[k] = u.max()
+        if len(l):
+            ml0[k] = l.min()
+    ok0 = np.isfinite(mu0) & np.isfinite(ml0)
+    if ok0.sum() < 3:
+        raise ValueError('could not slice a closed section from the STL')
+    ref0 = 0.5 * (mu0[ok0] + ml0[ok0])
+    xr0 = xq0[ok0]
+    # fill gaps, then a short median filter rejects isolated bad bins
+    xg0 = np.linspace(x1, x2, n0)
+    ref0 = np.interp(xg0, xr0, ref0)
+    from scipy.signal import medfilt
+    ref0 = medfilt(ref0, 5)
+    ref = np.interp(xe, xg0, ref0)
+    # pass 2: cosine-clustered output stations (dense at LE/TE like the
+    # mesher), split at the local mean-line reference: the mean line
+    # separates the two surfaces exactly by construction.
+    beta = np.linspace(0.0, np.pi, n)
+    xq = x1 + 0.5 * (1.0 - np.cos(beta)) * chord
+    edges = np.empty(n + 1)
+    edges[1:-1] = 0.5 * (xq[1:] + xq[:-1])
+    edges[0] = x1 - 1e-9
+    edges[-1] = x2 + 1e-9
     yu = np.full(n, np.nan)
     yl = np.full(n, np.nan)
-    z = P[:, th]
     for k in range(n):
-        sel = idx == k
+        sel = (xe >= edges[k]) & (xe < edges[k + 1])
         if not np.any(sel):
             continue
         zz = z[sel]
-        zmed = np.median(zz)
-        up = zz[zz > zmed]
-        lo = zz[zz < zmed]
+        zr = ref[sel]
+        up = zz[zz >= zr]
+        lo = zz[zz <= zr]
         if len(up):
             yu[k] = up.max()
         if len(lo):
@@ -77,14 +120,16 @@ def extract_section(mesh, station=None, n=400):
     yl = np.interp(xq, xq[have_l], yl[have_l])
     mean = 0.5 * (yu + yl)
     half = 0.5 * (yu - yl)
-    # camber can be non-zero even for a ROTATED section: the mid-chord
-    # mean height is the rotation offset; report the shape part only
-    mean0 = mean - mean.mean()
+    # camber metric: peak-to-peak of the mean line (datum-independent).
+    # NOTE: do NOT subtract the mean-line average here -- that is a
+    # constant z-shift (a translation, not a de-rotation); it both
+    # understates the camber of aft-loaded sections (0.0127 -> 0.0074 for
+    # the RAE variant) and changes the section passed to the solver.
     return {
         'x': (xq - x1) / chord,
-        'yu': (yu - mean.mean()) / chord,
-        'yl': (yl - mean.mean()) / chord,
-        'camber_max': float(np.max(np.abs(mean0)) / chord),
+        'yu': yu / chord,
+        'yl': yl / chord,
+        'camber_max': float(np.max(mean) - np.min(mean)) / chord,
         'thick_max': float(np.max(half) * 2 / chord),
         'span_axis': thin,
         'station': float(station),
@@ -96,17 +141,31 @@ def extract_section(mesh, station=None, n=400):
 def run_tsd_on_stl(path, mach=0.9, alpha_deg=1.25, span=1.6, epochs=8,
                    station=None):
     """Full TSD run on an STL. Returns a result dict."""
-    from wing3d.geometry import read_stl
+    from wing3d.geometry import read_stl, section_loop
     from wing3d.tsd import section_profile_xy
     from tsd_m_sup import run_sup
     from wing3d.transonic import m_crit, predict
+    from scipy.signal import savgol_filter
     mesh = read_stl(path)
     sec = extract_section(mesh, station=station)
-    prof = section_profile_xy(sec['x'], sec['yu'], sec['yl'])
-    # use the campaign-validated path (panel circulation + supersonic BCs)
-    free_k = mach < 0.95
+    # bin-level slice noise (~1e-4 in z) must not leak into the wall BC,
+    # whose camber/thickness SLOPES feed the solver directly (unsmoothed
+    # slopes shifted the transonic branch: CL 0.25 -> 0.16 at M0.85)
+    w = min(41, len(sec['x']) // 4 * 2 + 1)
+    yu_s = savgol_filter(sec['yu'], w, 3)
+    yl_s = savgol_filter(sec['yl'], w, 3)
+    # savgol edge handling extrapolates a polynomial (nose overshoot);
+    # pin the endpoints to the raw slice values instead
+    yu_s[0], yu_s[-1] = sec['yu'][0], sec['yu'][-1]
+    yl_s[0], yl_s[-1] = sec['yl'][0], sec['yl'][-1]
+    prof = section_profile_xy(sec['x'], yu_s, yl_s)
+    sec_loop = section_loop(sec['x'], yu_s, sec['x'], yl_s, 24)
+    # campaign-validated path: fixed k=1 camber imprint + supersonic BCs.
+    # (the free-k closure was diagnosed non-viable -- k collapse / spurious
+    # TE unloading; see tests3d kscan/kroot diagnostics)
+    free_k = False
     L, xc, ix, j0 = run_sup(mach, span=span, epochs=epochs,
-                             free_k=free_k, profile=prof)
+                             free_k=free_k, profile=prof, section=sec_loop)
     xg = np.linspace(0.02, 0.95, 40)
     cp0min = float(np.min(prof['slope'](xg))) * 3.0   # panel-suction proxy
     r = predict(mach, alpha_deg)
@@ -123,7 +182,7 @@ def run_tsd_on_stl(path, mach=0.9, alpha_deg=1.25, span=1.6, epochs=8,
         'CD': float(L['CD']),
         'section_cl': float(np.trapezoid(
             (L['cpl'][ix, j0] - L['cpu'][ix, j0]), xc)),
-        'of_anchor_CL': (r['CL'] if isinstance(r.get('CL'), float)
+        'surrogate_CL': (r['CL'] if isinstance(r.get('CL'), float)
                          and r['CL'] == r['CL'] else None),
     }
     return out

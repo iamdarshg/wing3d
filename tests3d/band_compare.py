@@ -24,7 +24,8 @@ def of_rows():
                 if l.strip() and not l.strip().startswith('#')]
         if not rows:
             continue
-        t, cl, cd = float(rows[-1][0]), float(rows[-1][4]), float(rows[-1][6])
+        # cols: 1=Time 2=Cd 5=Cl (7 is Cl(r), NOT Cd)
+        t, cl, cd = float(rows[-1][0]), float(rows[-1][4]), float(rows[-1][1])
         out.setdefault(geo, {})[M] = (t, cl, cd)
     return out
 
