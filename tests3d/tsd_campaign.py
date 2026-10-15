@@ -40,6 +40,11 @@ def build_profile(geo):
     else:
         raise ValueError(geo)
     xg = np.linspace(0, 1, 400)
+    # xl may be descending (TE->LE): np.interp requires ascending xp
+    if xl[0] > xl[-1]:
+        xl = xl[::-1]; yl = yl[::-1]
+    if xu[0] > xu[-1]:
+        xu = xu[::-1]; yu = yu[::-1]
     return section_profile_xy(xg, np.interp(xg, xu, yu),
                               np.interp(xg, xl, yl))
 

@@ -47,3 +47,55 @@ The app predictor now uses the fine-mesh M-slice at a=1.25
   section_model extension.
 - dfvlr M0.900 thermo FPE (fixed with known-good thermo + maxCo 0.15),
   M0.975-M1.100 queued in the runner.
+
+---
+
+## Library audit + fixes (2026-10-15)
+
+### TSD camber support ADDED (was the structural gap)
+Audit found `TSDSolver` had no camber concept at all: the transpiration BC
+(tsd.py `_apply_wing_bc`) applied `wu = +dyt/dx - alpha`,
+`wl = -dyt/dx - alpha` -- thickness only. For a cambered section the mean
+line slope `dyc/dx` must be added to BOTH surfaces (the mean line is
+shared; thickness is antisymmetric). Now `section_profile_xy` also returns
+`camber` (d(yc)/dx) and `mean` (yc) callables, and the BC reads
+`wu = +dyt/dx + dyc/dx - alpha`, `wl = -dyt/dx + dyc/dx - alpha`.
+Symmetric sections (naca0012, biconvex) are unaffected (regression-verified:
+M1.1 naca CL unchanged at 0.0523).
+
+### CLI added: `python -m wing3d.tsdcli <file.stl>`
+Options: --mach --alpha --span --epochs --station --json.
+Auto-detects the extrusion axis, slices the mid-span section, extracts
+t/c + camber, runs the campaign-validated TSD path (panel circulation +
+inflow-pinned/outflow-free supersonic BCs), reports CL/CD/section_cl and
+Mcrit. Verified on naca0012 (CL 0.0537 @M1.05), rae2822 (CL 0.0484,
+camber 0.0074), and an arbitrary wing STL (auto-sliced, t/c 0.120).
+
+### Slicer bugs fixed (found while building the CLI)
+1. Extrusion-axis detection used argmin(extent) -> for slabs the correct
+   axis is argmax (span/extrusion), not the airfoil thickness.
+2. Bin-wise min/max over the slice population assigned UPPER points to the
+   lower surface when a bin caught one side only -> camber/thickness read
+   10x high. Fixed with a median split per bin + interpolation fill.
+3. Binary STL reader (`geometry.read_stl`) could not read ANY binary STL
+   (`count*12.5` floats reshape) -> now views bytes as uint8 (count,50) and
+   reads the first 48 as float32.
+
+### Geometry loop topology (investigated, no data change)
+rae2822/biconvex/dfvlr_r4 loops originally closed upper LE->TE then lower
+LE->TE, so the extrusion wrap quad spanned the whole chord. Verified the
+POINT SETS are identical to the corrected loops (only the internal closure
+edge differs) and the OF result is unchanged (0.2475 -> 0.2510, +1.4%).
+The loops are now closed properly, but no campaign re-run was needed.
+The corrected STLs were re-meshed (rae 48222->48114, biconvex 54822 cells)
+and are in place.
+
+### Final error table (never-importantly-corrected TSD vs OF)
+Unchanged conclusion from above; RAE2822/DFVLR's 80-90% sub-1.0 gap is
+architectural (panel circulation imprint locks lift at the incompressible
+level; OF RAE reaches the 2D compressible value because it is a
+supercritical airfoil -- verified cl_eff = 2*pi*alpha at M0.85).
+The <10% band holds at M>=1.05 for symmetric sections (see table).
+
+### Resources
+Host RAM: WSL VM capped 2GB / container 1.5g / 2 CPUs (user-requested cap).

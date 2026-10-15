@@ -101,14 +101,15 @@ def section_profile_xy(x, y_up, y_lo, n=400):
     y_lo = np.asarray(y_lo, dtype=float)
     order = np.argsort(x)
     x = x[order]; y_up = y_up[order]; y_lo = y_lo[order]
-    # duplicate LE/TE points to make the interpolant stable at ends
+    # half-thickness (symmetric part) and mean line (camber)
     half = 0.5 * (y_up - y_lo)
-    # slope via central differences on the half-thickness
-    hx = np.hstack([0, np.cumsum(np.hypot(np.diff(x), np.diff(half)))])
-    # resample on uniform x/c for a smooth slope
+    mean = 0.5 * (y_up + y_lo)
+    # resample on uniform x/c
     xg = np.linspace(0, 1, n)
     hg = np.interp(xg, x, half)
+    mg = np.interp(xg, x, mean)
     slope = np.gradient(hg, xg)
+    camber = np.gradient(mg, xg)
 
     def slope_fn(xc):
         xc = np.clip(np.asarray(xc, dtype=float), 0, 1)
@@ -118,8 +119,19 @@ def section_profile_xy(x, y_up, y_lo, n=400):
         xc = np.clip(np.asarray(xc, dtype=float), 0, 1)
         return np.interp(xc, xg, hg)
 
-    return {'slope': slope_fn, 'half': half_fn, 'x': xg,
-            'half_thickness': hg, 'slope_arr': slope}
+    def camber_fn(xc):
+        """Mean-line (camber line) slope d(yc)/dx."""
+        xc = np.clip(np.asarray(xc, dtype=float), 0, 1)
+        return np.interp(xc, xg, camber)
+
+    def mean_fn(xc):
+        """Mean-line (camber line) height yc(x)."""
+        xc = np.clip(np.asarray(xc, dtype=float), 0, 1)
+        return np.interp(xc, xg, mg)
+
+    return {'slope': slope_fn, 'half': half_fn, 'camber': camber_fn,
+            'mean': mean_fn, 'x': xg, 'half_thickness': hg,
+            'mean_line': mg, 'slope_arr': slope, 'camber_arr': camber}
 
 
 class TSDSolver:
@@ -415,7 +427,10 @@ class TSDSolver:
         as a mass source: upper volume gets +wu/dz, lower gets -wl/dz
         (wl negative = downward blowing = source below). No phi
         dependence -> operator stays SPD -> SOR converges.
-        Upper: wu = +dz_t/dx - alpha; lower: wl = -dz_t/dx - alpha.
+        Upper surface: wu = +dyt/dx + dyc/dx - alpha
+        Lower surface: wl = -dyt/dx + dyc/dx - alpha
+        (yt = half-thickness, yc = camber/mean line; the camber slope is
+        shared by both surfaces, thickness slope is antisymmetric.)
         """
         k0 = self.k0
         if k0 < 1 or k0 >= self.nz:
@@ -430,12 +445,14 @@ class TSDSolver:
         xc = self.xc[iu] / self.chord
         if self.profile is not None:
             slope_t = self.profile['slope'](xc)[:, None]
+            slope_c = self.profile['camber'](xc)[:, None]
         else:
             slope_t = thickness_slope(xc, self.thick)[:, None]
+            slope_c = np.zeros_like(slope_t)
         # NOTE: no cap here (cap kills LE suction); Newton-Krylov handles
         # the stiff LE source robustly where SOR blew up.
-        wu = slope_t - self.alpha
-        wl = -slope_t - self.alpha
+        wu = slope_t + slope_c - self.alpha
+        wl = -slope_t + slope_c - self.alpha
         R[II, JJ, k0] += wu / dzp
         R[II, JJ, k0 - 1] += -wl / dzm
         return R

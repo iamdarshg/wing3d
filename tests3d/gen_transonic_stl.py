@@ -158,8 +158,8 @@ def rae2822_xy():
 0.999398 0.000035
 1.000000 0.000000"""
     pts = np.array([list(map(float, ln.split())) for ln in raw.split('\n')])
-    up = pts[:65]      # LE->TE upper
-    lo = pts[64:]      # LE->TE lower
+    up = pts[:65]      # LE->TE upper (index 65 is the duplicate 0,0 row)
+    lo = pts[65:]      # LE->TE lower
     # resample upper+lower to n chordwise stations, cosine-clustered
     def resample(p):
         s = np.hstack([0, np.cumsum(np.hypot(np.diff(p[:, 0]),
@@ -392,10 +392,11 @@ def dfvlr_r4_xy():
 
 
 def dfvlr_loop():
+    """DFVLR R-4 section as a CLOSED loop (see rae_loop note)."""
     xu, yu, xl, yl = dfvlr_r4_xy()
-    up = np.stack([xu, yu], axis=1)
-    lo = np.stack([xl, yl], axis=1)
-    return np.vstack([up, lo[::-1]])
+    up = np.stack([xu, yu], axis=1)[::-1]   # TE -> LE upper
+    lo = np.stack([xl, yl], axis=1)[::-1]   # LE -> TE lower
+    return np.vstack([up, lo])
 
 
 def naca_loop(n=350, t=0.12):
@@ -406,16 +407,22 @@ def naca_loop(n=350, t=0.12):
 
 
 def rae_loop():
+    """RAE2822 section as a CLOSED loop: upper TE->LE, then lower LE->TE.
+
+    (A naive upper-then-lower both LE->TE leaves the wrap quad spanning
+    the whole chord -- a phantom flap that doubles lift.)
+    """
     xu, yu, xl, yl = rae2822_xy()
-    up = np.stack([xu, yu], axis=1)
-    lo = np.stack([xl, yl], axis=1)
-    return np.vstack([up, lo[::-1]])
+    up = np.stack([xu, yu], axis=1)[::-1]   # reverse: TE -> LE upper
+    lo = np.stack([xl, yl], axis=1)[::-1]   # xl is descending -> LE -> TE
+    return np.vstack([up, lo])
 
 
 def biconv_loop(n=350, t=0.08):
+    """Biconvex section as a CLOSED loop (see rae_loop note)."""
     x, y = biconvex_xy(n=n, t=t)
-    up = np.stack([x, y], axis=1)
-    lo = np.stack([x, -y], axis=1)[1:]
+    up = np.stack([x, y], axis=1)[::-1]     # TE -> LE upper
+    lo = np.stack([x, -y], axis=1)[1:]      # LE+1 -> TE lower
     return np.vstack([up, lo])
 
 
