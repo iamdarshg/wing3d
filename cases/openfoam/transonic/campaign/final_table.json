@@ -2,46 +2,46 @@
  {
   "geo": "naca0012",
   "M": 0.75,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.06282336,
+  "of_cd": 0.02150149,
   "tsd_cl": 0.049729011010272564,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": -20.843121077458182,
+  "source": "new"
  },
  {
   "geo": "naca0012",
   "M": 0.775,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.06455641,
+  "of_cd": 0.02220918,
   "tsd_cl": 0.049839219570362275,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": -22.79741148808882,
+  "source": "new"
  },
  {
   "geo": "naca0012",
   "M": 0.8,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.06657627,
+  "of_cd": 0.02333923,
   "tsd_cl": 0.04999797151835045,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": -24.90121252159299,
+  "source": "new"
  },
  {
   "geo": "naca0012",
   "M": 0.825,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.06914832,
+  "of_cd": 0.02529188,
   "tsd_cl": 0.05023364530751558,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": -27.353773298446608,
+  "source": "new"
  },
  {
   "geo": "naca0012",
@@ -156,35 +156,35 @@
  {
   "geo": "rae2822",
   "M": 0.775,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2324418,
+  "of_cd": 0.02410804,
   "tsd_cl": 0.2485536707731411,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 6.931572020669736,
+  "source": "new"
  },
  {
   "geo": "rae2822",
   "M": 0.8,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2372339,
+  "of_cd": 0.02618483,
   "tsd_cl": 0.2483645466484963,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 4.691844904331256,
+  "source": "new"
  },
  {
   "geo": "rae2822",
   "M": 0.825,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2428993,
+  "of_cd": 0.03022902,
   "tsd_cl": 0.24800199018058058,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 2.1007430571354346,
+  "source": "new"
  },
  {
   "geo": "rae2822",
@@ -299,35 +299,35 @@
  {
   "geo": "biconvex",
   "M": 0.775,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.05655333,
+  "of_cd": 0.007072061,
   "tsd_cl": 0.04734788284028591,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": -16.277462635204838,
+  "source": "new"
  },
  {
   "geo": "biconvex",
   "M": 0.8,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.05779271,
+  "of_cd": 0.007462237,
   "tsd_cl": 0.047479974601177095,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": -17.844353377481177,
+  "source": "new"
  },
  {
   "geo": "biconvex",
   "M": 0.825,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.05901353,
+  "of_cd": 0.007980558,
   "tsd_cl": 0.047758833543401095,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": -19.0713832177111,
+  "source": "new"
  },
  {
   "geo": "biconvex",
@@ -431,24 +431,24 @@
  {
   "geo": "dfvlr_r4",
   "M": 0.75,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2499873,
+  "of_cd": 0.02670994,
   "tsd_cl": 0.5252172639675926,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 110.09757854402706,
+  "source": "new"
  },
  {
   "geo": "dfvlr_r4",
   "M": 0.775,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2549289,
+  "of_cd": 0.02847943,
   "tsd_cl": 0.5183459190997695,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 103.32960252830081,
+  "source": "new"
  },
  {
   "geo": "dfvlr_r4",

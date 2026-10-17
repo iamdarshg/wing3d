@@ -3,7 +3,8 @@
 Snapshot of the container's `/tmp` worker scripts that produced the 52-case
 OF corpus (original 36-case programme + the M0.75-0.825 fills + the
 dfvlr_r4 M0.900 replacement). All lanes: `rhoCentralFoam`, `localEuler`
-(LTS), `deltaT 2e-5`, `maxCo 0.5`, `maxDeltaT 1e-4`, `endTime 0.25`,
+(LTS), `deltaT 2e-5` (`1e-5` on the dfvlr_r4 cases), `maxCo 0.5`,
+`maxDeltaT 1e-4`, `endTime 0.25`,
 `writeInterval 0.03`, `purgeWrite 2`, forces on the wing patch (Aref 1.6,
 lRef 1.0, CofR (0.25,0,0)).
 
@@ -26,6 +27,19 @@ lRef 1.0, CofR (0.25,0,0)).
 | `.done2` = `done` / `no-forces` | completion record for the `.done2`-checking lanes; `no-forces` = solver produced no forces (rerun separately) |
 | `.done2` = `claimed-<lane>` | pre-claim so slow lanes skip a case another lane owns |
 | empty `.dat` | ignored by `tests3d/final_table.py` (falls back to `container_coeffs/` corpus) |
+
+## dfvlr_r4 controlDict caveat (2026-10-17)
+
+The dfvlr_r4 case family stores several entries per line
+(`startFrom startTime; startTime 0; stopAt endTime; endTime 0.25;`).
+Line-oriented `sed` edits that rewrite entire lines delete the trailing
+entries silently — this broke the first v4/v5/v6 attempt
+(`startTime`/`stopAt`/`endTime` vanished => FATAL IO at startup). The
+dfvlr_r4 lanes therefore run the case controlDicts as generated:
+`solver_v4/v5/v6.sh` carry no `sed` (rewritten versions kept here). The
+M0.900 case's `0/U` had additionally been seeded from the old M0.85 copy;
+it was regenerated to the correct freestream `(317.677 0 6.932)`
+(U = 0.9 x 353.059 m/s, alpha 1.25 deg) before the 2026-10-17 relaunch.
 
 ## Case directory layout
 

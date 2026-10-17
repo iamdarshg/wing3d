@@ -10,9 +10,6 @@ echo "$(date +%H:%M:%S) start $C" >> batchv4.log
 rm -rf "$C/0.0"* "$C/0.1"* "$C/0.2"* "$C/postProcessing" "$C/constant/polyMesh" "$C/0/polyMesh" 2>/dev/null
 cp -r /meshCache/dfvlr_r4 "$C/constant/polyMesh"
 cd "$C"
-sed -i 's/^startFrom .*/startFrom startTime;/; s/^startTime .*/startTime 0;/' system/controlDict
-sed -i 's/^endTime .*/endTime 0.25;/; s/^deltaT .*/deltaT 2e-5;/' system/controlDict
-sed -i 's/^maxCo .*/maxCo 0.5;/; s/^maxDeltaT .*/maxDeltaT 1e-4;/' system/controlDict
 rhoCentralFoam > log.run 2>&1
 cd ..
 f=$(find "$C/postProcessing" -name coefficient.dat 2>/dev/null | head -1)

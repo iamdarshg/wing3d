@@ -123,24 +123,24 @@ All three geometry sources were reconciled with `tests3d/diag_geo_def.py`
 
 | geo | 0.750 | 0.775 | 0.800 | 0.825 | 0.850 | 0.875 | 0.900 | 0.925 | 0.950 | 0.975 | 1.000 | 1.025 | 1.050 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| naca0012 | - | - | - | - | -30.5 | -30.8 | -30.6 | -36.1 | -35.5 | -29.9 | -16.9 | -11.7 | -9.9 |
-| rae2822 | +8.6 | - | - | - | -0.8 | -4.7 | -8.6 | -10.3 | -4.8 | +9.7 | +32.0 | +57.6 | +111.8 |
-| biconvex | -14.8 | - | - | - | -33.6 | -33.7 | -26.0 | -40.0 | -39.1 | -29.6 | -18.1 | -17.1 | -12.6 |
-| dfvlr_r4 | - | - | - | - | +88.3 | +81.7 | - | +71.8 | +77.2 | +100.6 | +136.9 | +179.5 | +276.1 |
+| naca0012 | -20.8 | -22.8 | -24.9 | -27.4 | -30.5 | -30.8 | -30.6 | -36.1 | -35.5 | -29.9 | -16.9 | -11.7 | -9.9 |
+| rae2822 | +8.6 | +6.9 | +4.7 | +2.1 | -0.8 | -4.7 | -8.6 | -10.3 | -4.8 | +9.7 | +32.0 | +57.6 | +111.8 |
+| biconvex | -14.8 | -16.3 | -17.8 | -19.1 | -33.6 | -33.7 | -26.0 | -40.0 | -39.1 | -29.6 | -18.1 | -17.1 | -12.6 |
+| dfvlr_r4 | +110.1 | +103.3 | - | - | +88.3 | +81.7 | - | +71.8 | +77.2 | +100.6 | +136.9 | +179.5 | +276.1 |
 
-**Coverage at assembly.** 37/52 case pairs computed; 15 OF fills
-(rae 0.775–0.825; naca 0.750–0.825; biconvex 0.775–0.825; dfvlr 0.750–0.825,
-0.900) were still running when this table was snapshotted — `-` marks a
-pending pair. The table is regenerated mechanically from the delivered
-corpus (`tests3d/final_table.py` → `campaign/final_table.json/.md`, this
-block via `tests3d/gen_report_section.py`); the full 52-row raw table lives
-in `campaign/final_table.md`.
+**Coverage.** 49/52 case pairs computed; the three dfvlr fills
+(M0.800, M0.825, M0.900) were still running when this table was
+snapshotted — `-` marks a pending pair. The table is regenerated
+mechanically from the delivered corpus (`tests3d/final_table.py` →
+`campaign/final_table.json/.md`, this block via
+`tests3d/gen_report_section.py`); the full 52-row raw table lives in
+`campaign/final_table.md`.
 
-**Within 10% (computed rows).** 7/37 overall —
-- rae2822: **6/10** (M0.75–0.975; mean |err| 24.9% pulled up by the high-M blowups)
-- naca0012: 1/9 (M1.05 at −9.9%; mean 25.8%)
-- biconvex: 0/10 (best −12.6% at M1.05; mean 26.5%)
-- dfvlr_r4: 0/8 (mean 126.5%)
+**Within 10% (converged rows).** 10/49 overall —
+- rae2822: **9/13** (M0.75–0.975 except M0.925 at −10.3%; mean 20.2% pulled up by the high-M blowups)
+- naca0012: 1/13 (M1.05 at −9.9%; mean 25.2%)
+- biconvex: 0/13 (best −12.6% at M1.05; mean 24.4%)
+- dfvlr_r4: 0/10 (mean 122.6%)
 
 Reading notes: error = (CL_TSD − CL_OF)/CL_OF × 100 at each (geometry, Mach);
 computed cells use converged OF values (t=0.25) and converged TSD epochs;
@@ -152,7 +152,8 @@ snapshot). Sign convention: negative = TSD below OF.
 **The rae variant matches across the mid-band.** At M0.85 the campaign
 gives TSD 0.2491 vs OF 0.2510 (−0.8%); the extracted-STL CLI reproduces it
 independently (0.2492, +0.04%). Across M0.75–0.975 the rae errors stay
-within ±10% (three of them within ±5%), crossing zero at M0.85 — the
+within ±10% at nine of the ten subsonic stations (five within ±5%; the
+tenth, M0.925, lands at −10.3% just outside), crossing zero at M0.85 — the
 fixed-imprint TSD is quantitatively calibrated for the moderate aft-loaded
 section through the mid-band.
 
@@ -190,8 +191,8 @@ M1.0 → 1.05) while the symmetric naca error improves toward the OF floor
 (−17% → −10%).
 
 **Overall.** The under-10% target is met for the rae mid-band (M0.75–0.975,
-six cells) and at the high-M end of the naca band (M1.05, −9.9%); the
-symmetric sections otherwise sit −13…−40% below OF (tip-relief/configuration
+nine stations of ten) and at the high-M end of the naca band (M1.05, −9.9%);
+the symmetric sections otherwise sit −10…−40% below OF (tip-relief/configuration
 + dissipation) and the strong-camber dfvlr case overshoots by +72…+276% as
 the OF lift collapses under its shock system. These are reported honestly in
 §6 rather than tuned away: the campaign measures a configuration-level,
@@ -214,6 +215,11 @@ python -m wing3d.tsdcli <file.stl> --mach 0.85 --epochs 8
 ## 9. Honest accounting
 
 - Euler only (no boundary layer): CD is pressure + wave drag only.
+- Mach labeling (all OF cases): the inflow speed is built as U∞ = M_label·a_ref
+  with a_ref = √(γ p∞/ρ∞) = 353.06 m/s (p∞ = 1e5 Pa, ρ∞ = 1.1231) while the
+  inflow temperature is T∞ = 300 K, so the thermodynamic freestream Mach is
+  ≈ 1.017·M_label. The identical construction backs every OF row (old corpus
+  and fills), so cross-row comparisons are unaffected.
 - The "OF anchors" are the delivered slab configuration (symmetry walls),
   not free-flight AR1.6 — see §7.
 - The rae/dfvlr sections are the delivered aft-loaded variants, not
