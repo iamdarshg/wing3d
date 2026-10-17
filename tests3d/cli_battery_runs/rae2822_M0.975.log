@@ -1,0 +1,15 @@
+  ep 0: CL=0.2482 k_mid=1.000 nsup=1248
+  ep 1: CL=0.2486 k_mid=1.000 nsup=1140
+  ep 2: CL=0.2477 k_mid=1.000 nsup=1023
+  ep 3: CL=0.2477 k_mid=1.000 nsup=960
+  ep 4: CL=0.2472 k_mid=1.000 nsup=955
+  ep 5: CL=0.2468 k_mid=1.000 nsup=949
+  ep 6: CL=0.2457 k_mid=1.000 nsup=969
+  ep 7: CL=0.2443 k_mid=1.000 nsup=1173
+M=0.97: full-wing CL=0.2443  centerline cl=0.2685  Cfmax=0.30
+TSD full-potential result for D:\CodeProjects\cfd\cases\openfoam\transonic\stl\rae2822.stl
+  M=0.975  alpha=1.25deg  span=1.6 chords
+  mesh: 307116 panels / 153560 vertices
+  section: t/c=0.121  camber=0.0131  Mcrit=0.75
+  CL=0.2443  section_cl=0.2685  CD=0.0099
+  saved D:\CodeProjects\cfd\tests3d\cli_battery_runs\rae2822_M0.975.json

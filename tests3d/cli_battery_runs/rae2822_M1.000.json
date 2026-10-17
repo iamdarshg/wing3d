@@ -1,0 +1,14 @@
+{
+ "stl": "D:\\CodeProjects\\cfd\\cases\\openfoam\\transonic\\stl\\rae2822.stl",
+ "mach": 1.0,
+ "alpha_deg": 1.25,
+ "npanels": 307116,
+ "nverts": 153560,
+ "thick_max": 0.12110663950443268,
+ "camber_max": 0.013099996707821939,
+ "mcrit": 0.7481950584567221,
+ "CL": 0.24748927772556428,
+ "CD": 0.010114216768743094,
+ "section_cl": 0.2737417702971108,
+ "surrogate_CL": 0.0628
+}

@@ -1,0 +1,15 @@
+  ep 0: CL=0.5210 k_mid=1.000 nsup=146
+  ep 1: CL=0.5269 k_mid=1.000 nsup=139
+  ep 2: CL=0.5089 k_mid=1.000 nsup=163
+  ep 3: CL=0.5154 k_mid=1.000 nsup=196
+  ep 4: CL=0.5090 k_mid=1.000 nsup=195
+  ep 5: CL=0.5034 k_mid=1.000 nsup=217
+  ep 6: CL=0.5020 k_mid=1.000 nsup=235
+  ep 7: CL=0.4558 k_mid=1.000 nsup=258
+M=0.85: full-wing CL=0.4558  centerline cl=0.4113  Cfmax=0.90
+TSD full-potential result for D:\CodeProjects\cfd\cases\openfoam\transonic\stl\dfvlr_r4.stl
+  M=0.850  alpha=1.25deg  span=1.6 chords
+  mesh: 307556 panels / 153780 vertices
+  section: t/c=0.134  camber=0.0211  Mcrit=0.71
+  CL=0.4558  section_cl=0.4113  CD=0.0170
+  saved D:\CodeProjects\cfd\tests3d\cli_battery_runs\dfvlr_r4_M0.850.json

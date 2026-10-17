@@ -1,0 +1,15 @@
+  ep 0: CL=0.0503 k_mid=1.000 nsup=3
+  ep 1: CL=0.0500 k_mid=1.000 nsup=12
+  ep 2: CL=0.0499 k_mid=1.000 nsup=24
+  ep 3: CL=0.0497 k_mid=1.000 nsup=30
+  ep 4: CL=0.0497 k_mid=1.000 nsup=34
+  ep 5: CL=0.0497 k_mid=1.000 nsup=38
+  ep 6: CL=0.0497 k_mid=1.000 nsup=40
+  ep 7: CL=0.0497 k_mid=1.000 nsup=40
+M=0.75: full-wing CL=0.0497  centerline cl=0.0544  Cfmax=0.38
+TSD full-potential result for D:\CodeProjects\cfd\cases\openfoam\transonic\stl\naca0012.stl
+  M=0.750  alpha=1.25deg  span=1.6 chords
+  mesh: 307116 panels / 153560 vertices
+  section: t/c=0.120  camber=0.0000  Mcrit=0.74
+  CL=0.0497  section_cl=0.0544  CD=-0.0045
+  saved D:\CodeProjects\cfd\tests3d\cli_battery_runs\naca0012_M0.750.json

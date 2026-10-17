@@ -1,0 +1,15 @@
+  ep 0: CL=0.0467 k_mid=1.000 nsup=79949
+  ep 1: CL=0.0473 k_mid=1.000 nsup=79034
+  ep 2: CL=0.0476 k_mid=1.000 nsup=78944
+  ep 3: CL=0.0478 k_mid=1.000 nsup=78869
+  ep 4: CL=0.0478 k_mid=1.000 nsup=78847
+  ep 5: CL=0.0480 k_mid=1.000 nsup=78796
+  ep 6: CL=0.0480 k_mid=1.000 nsup=78758
+  ep 7: CL=0.0480 k_mid=1.000 nsup=78747
+M=1.05: full-wing CL=0.0480  centerline cl=0.0531  Cfmax=0.08
+TSD full-potential result for D:\CodeProjects\cfd\cases\openfoam\transonic\stl\biconvex.stl
+  M=1.050  alpha=1.25deg  span=1.6 chords
+  mesh: 307116 panels / 153560 vertices
+  section: t/c=0.080  camber=0.0000  Mcrit=0.74
+  CL=0.0480  section_cl=0.0531  CD=-0.0029
+  saved D:\CodeProjects\cfd\tests3d\cli_battery_runs\biconvex_M1.050.json

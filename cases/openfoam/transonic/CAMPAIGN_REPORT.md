@@ -24,7 +24,15 @@ CL/CD — the raw coefficient tables are in `campaign/final_table.md`.
    Validation (α=1.25°, span 1.6, M0.85): NACA **0.0507 vs 0.0506
    (+0.2%)**, RAE **0.2492 vs 0.2491 (+0.04%)** — the extracted-section
    path reproduces the campaign anchors to solver epoch noise on both
-   delivered STLs.
+   delivered STLs. **CLI battery** (`tests3d/cli_battery.py`, 12 (geo, M)
+   pairs, 3-way parallel, 659–854 s/run, all rc=0): CLI-vs-campaign
+   deltas ≤1.0% on 10/12 pairs (rae M0.75–1.0 ≤1.0%, naca M0.75 −0.06%,
+   biconvex ≤0.6%); flagged: naca M1.05 **+1.8%** and dfvlr M0.85
+   **−9.5%** / M0.95 **−5.1%** (dfvlr epoch wobble ±3–6% plus
+   strong-camber extraction sensitivity; M1.05 +0.14%). The battery's
+   error-vs-OF column reproduces the campaign pattern (rae
+   +8.0/−0.7/−11.0/+8.6/+31.2; dfvlr +70.5/+68.3/+276.6), so the shipped
+   path measures the same physics as the campaign.
 3. **Campaign drivers** — `tests3d/tsd_campaign.py` (13-Mach sweep per geo),
    `tests3d/tsd_m_sup.py` (supersonic-branch TSD), `tests3d/final_table.py`
    (OF-vs-TSD assembler → `final_table.json` / `final_table.md`).
@@ -207,6 +215,8 @@ python tests3d/tsd_campaign.py rae2822      # also: naca0012 | biconvex | dfvlr_
 python tests3d/final_table.py               # -> campaign/final_table.json/.md
 # STL CLI on any wing STL
 python -m wing3d.tsdcli <file.stl> --mach 0.85 --epochs 8
+# CLI validation battery (12 (geo, M) pairs, ~11-14 min/run at --jobs 3)
+python tests3d/cli_battery.py --jobs 3
 # OpenFOAM corpus (container `oftrans`, per-case dirs under
 #   /caseCampaign/campaign/<geo>_M<mach>_a1.25, results mirrored to
 #   cases/openfoam/transonic/campaign/results2/)
@@ -227,5 +237,14 @@ python -m wing3d.tsdcli <file.stl> --mach 0.85 --epochs 8
   (same geometry in both solvers).
 - Low-M cells are filled by re-runs of the same numerical settings; the
   original corpus itself reproduced to 4 digits where re-run.
+- Mesh resolution varies within two rows (per-case polyMesh notes, see
+  `ERROR_REDUCTION_SCOPE.md` §3): rae2822 M0.75–0.85 and 0.90 ran on
+  48,114-cell meshes while 0.875 and 0.925–1.10 ran on 53,946; dfvlr_r4
+  M0.75–0.825 and 0.90 ran on 86,145 cells while 0.85/0.875/0.925–1.10 ran
+  on 45,606 (naca/biconvex uniform). Cross-row comparisons inherit this
+  heterogeneity; a same-mesh re-run program is scoped there.
+- TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
+  ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr
+  error cells carry that much extra reporting noise.
 - Resources: WSL capped 2 GB / container 1.5 GB / 2 CPUs; ≤5 concurrent
   solvers; steady-state memory ~1.3 GB.

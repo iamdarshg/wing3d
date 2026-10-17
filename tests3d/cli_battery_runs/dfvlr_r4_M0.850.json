@@ -1,0 +1,14 @@
+{
+ "stl": "D:\\CodeProjects\\cfd\\cases\\openfoam\\transonic\\stl\\dfvlr_r4.stl",
+ "mach": 0.85,
+ "alpha_deg": 1.25,
+ "npanels": 307556,
+ "nverts": 153780,
+ "thick_max": 0.1338597796857357,
+ "camber_max": 0.021114023635163903,
+ "mcrit": 0.7067651495114322,
+ "CL": 0.45579242521926966,
+ "CD": 0.01696319172126269,
+ "section_cl": 0.41126904622670746,
+ "surrogate_CL": 0.0728
+}

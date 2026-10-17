@@ -1,0 +1,14 @@
+{
+ "stl": "D:\\CodeProjects\\cfd\\cases\\openfoam\\transonic\\stl\\biconvex.stl",
+ "mach": 1.05,
+ "alpha_deg": 1.25,
+ "npanels": 307116,
+ "nverts": 153560,
+ "thick_max": 0.07999934256076813,
+ "camber_max": 0.0,
+ "mcrit": 0.7379825910334901,
+ "CL": 0.04801785810888964,
+ "CD": -0.0029055684485769758,
+ "section_cl": 0.05306132903582707,
+ "surrogate_CL": 0.05789999999999999
+}
