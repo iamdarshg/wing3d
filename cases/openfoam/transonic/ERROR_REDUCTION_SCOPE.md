@@ -71,6 +71,16 @@ Estimator switch (window mean) or +epochs moves symmetric cells ≤ ~1–2 pp
 and dfvlr a few pp inside +70…+276% errors. Worth folding into L3's ep16
 config; not a standalone program.
 
+**CLI-battery corroboration (12 re-runs of the shipped path):** epoch
+trajectories identify the two battery outliers as termination position, not
+extraction bias: dfvlr M0.85's last epoch drops 0.5020 → 0.4558 (−9.2%,
+landing −9.5% below campaign) while its 4-epoch window mean is −2.5% from
+campaign; naca M1.05 drifts +2.7% across 8 epochs (0.0517 → 0.0531), the
+campaign value sitting at the CLI's epochs 1–2 (+1.8% final). rae / biconvex
+/ naca M0.75 agree ≤1%. A converged-increment stop rule (or window-mean
+reporting) is the cheap systematic fix for any follow-on sweep — worth more
+than the ep16 point alone.
+
 ---
 
 ## 2. L1 — Configuration pairing (the big structural lever)
@@ -94,13 +104,17 @@ wall-at-tip), cambered sections with strong shocks much less. The symmetric
 family's −20…−40% may therefore be mostly **config, not physics** — but the
 split cannot be proven from analysis alone; two probes decompose it:
 
-**Probe A (running): OF free-tip case.**
+**Probe A (solve running): OF free-tip case.**
 `cases/openfoam/transonic/campaign_freetip/naca0012_M0.850_a1.25` — identical
 to the corpus case except y ±2.4 (ny=9, Δy = 0.5333 matched), the two
 y-faces moved into the `farfield` patch (freestream BCs, true free tips at
 1.6c clearance), snappy caps 80k/95k, force constants copied verbatim
-(magUInf 300.099, rhoInf 1.1231, Aref 1.6). Launched at nice 10 so the
-dfvlr fills keep priority. Decision tree:
+(magUInf 300.099, rhoInf 1.1231, Aref 1.6). Mesh built: 116,192 cells,
+wall patch 4,708 faces vs the corpus 4,080 (surface resolution matched,
+slightly finer; checkMesh OK, min volume 3.3e-6). Solve restarted at fair
+share (nice 0) beside the three dfvlr fills (2 container cores / 4 serial
+solvers ≈ 0.5 core each; both land in the same overnight window). Decision
+tree:
 - OF_free(naca 0.85) ≈ 0.050–0.056 (within ±10% of TSD free) → **config
   confirmed** for the symmetric family; then either (a) build the TSD
   wall-mode and report wall-paired numbers, or (b) extend the corpus
@@ -156,11 +170,11 @@ both sit on the coarse meshes — mesh dissipation is a live suspect (L5).
 
 Campaign TSD solve: FD full-potential on **80×32×32** (build_case default),
 box xlim −8…10, y/z ±7, lateral faces free (zero residual), inflow pinned
-φ=0. Study script ready: `tests3d/tsd_convergence.py` — g80/g120/g160 +
-enlarged box (−12…16, ±11) + ep16, at rae / naca / dfvlr M0.85, ~3 h host
-(queued behind the CLI battery for host RAM). Reads the campaign value from
-`tsd_*.json` and prints the delta, so the campaign replication (g80) doubles
-as a harness check.
+φ=0. Study **running** (`tests3d/tsd_convergence.py`): g80/g120/g160 +
+enlarged box (−12…16, ±11) + ep16, at rae / naca / dfvlr M0.85. Reads the
+campaign value from `tsd_*.json` and prints the delta, so the campaign
+replication (g80) doubles as a harness check — rae g80 epochs 0–2 read
+0.2487 / 0.2494 / 0.2493 against the campaign 0.24907 (±0.1%).
 
 If ΔCL(g120−g80) or ΔCL(g160−g80) is material (≥1%), the campaign sweep can
 be re-run on the converged grid (13 M × 4 geo × ~10–15 min at g120 ≈ 8–13 h
@@ -200,13 +214,16 @@ documentation case rather than an error to reduce.
 
 ## 6. Sequence and housekeeping
 
-1. dfvlr fills (running) → 52/52; refresh §6/§7 via `final_table.py` +
-   `gen_report_section.py` as they land.
-2. Probe A result → L1 decision (report the config split honestly either way).
-3. TSD convergence study (queued) → L3/L4 numbers; adopt or document.
+1. dfvlr fills (running, ~7 h at current share) → 52/52; refresh §6/§7 via
+   `final_table.py` + `gen_report_section.py` as they land.
+2. Probe A result (solve running, same overnight window) → L1 decision
+   (report the config split honestly either way).
+3. TSD convergence study (running on host) → L3/L4 numbers; adopt or
+   document.
 4. Seam verdict from fills → optional dfvlr same-M re-run (L2/L5-1).
 5. Optional scheme probe (L5-2) and rae high-M refinement if (4) motivates.
-6. CLI battery addendum to §2 when its shell lands (`tests3d/cli_battery.json`).
+6. CLI battery addendum to §2 — **done** (`4cce6c6`; 10/12 pairs ≤1%, two
+   flags closed as termination position, §1.3).
 
 Any TSD-side solver change (L1 wall-mode, L3 grid) automatically propagates
 to `wing3d/tsdcli.py` (shared `run_sup` path) and would require regenerating

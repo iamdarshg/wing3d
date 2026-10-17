@@ -28,8 +28,12 @@ CL/CD — the raw coefficient tables are in `campaign/final_table.md`.
    pairs, 3-way parallel, 659–854 s/run, all rc=0): CLI-vs-campaign
    deltas ≤1.0% on 10/12 pairs (rae M0.75–1.0 ≤1.0%, naca M0.75 −0.06%,
    biconvex ≤0.6%); flagged: naca M1.05 **+1.8%** and dfvlr M0.85
-   **−9.5%** / M0.95 **−5.1%** (dfvlr epoch wobble ±3–6% plus
-   strong-camber extraction sensitivity; M1.05 +0.14%). The battery's
+   **−9.5%** / M0.95 **−5.1%** (M1.05 +0.14%). Epoch-trajectory analysis
+   attributes the flags to termination position, not extraction bias: the
+   dfvlr 0.85 run's last epoch jumps −9.2% while its 4-epoch window mean is
+   −2.5% from campaign, and naca M1.05 drifts +2.7% across its 8 epochs
+   with the campaign value at the CLI's epochs 1–2
+   (`ERROR_REDUCTION_SCOPE.md` §1.3). The battery's
    error-vs-OF column reproduces the campaign pattern (rae
    +8.0/−0.7/−11.0/+8.6/+31.2; dfvlr +70.5/+68.3/+276.6), so the shipped
    path measures the same physics as the campaign.
