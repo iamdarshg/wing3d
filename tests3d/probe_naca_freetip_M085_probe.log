@@ -1,0 +1,11 @@
+17:50:34 start mesh
+17:50:52 blockMesh ok
+17:58:58 snappy done
+    cells:            116192
+Mesh OK.
+17:59:21 start solve
+18:04:54 DONE t=0.0004 CL=1.063668e-01
+PROBE-END
+2026-10-17_18:10:03 restarted fresh (nice 0) - ignore first PROBE-END
+23:28:54 DONE t=0.25 CL=6.286796e-02
+PROBE-END

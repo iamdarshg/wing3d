@@ -138,21 +138,20 @@ All three geometry sources were reconciled with `tests3d/diag_geo_def.py`
 | naca0012 | -20.8 | -22.8 | -24.9 | -27.4 | -30.5 | -30.8 | -30.6 | -36.1 | -35.5 | -29.9 | -16.9 | -11.7 | -9.9 |
 | rae2822 | +8.6 | +6.9 | +4.7 | +2.1 | -0.8 | -4.7 | -8.6 | -10.3 | -4.8 | +9.7 | +32.0 | +57.6 | +111.8 |
 | biconvex | -14.8 | -16.3 | -17.8 | -19.1 | -33.6 | -33.7 | -26.0 | -40.0 | -39.1 | -29.6 | -18.1 | -17.1 | -12.6 |
-| dfvlr_r4 | +110.1 | +103.3 | - | - | +88.3 | +81.7 | - | +71.8 | +77.2 | +100.6 | +136.9 | +179.5 | +276.1 |
+| dfvlr_r4 | +110.1 | +103.3 | +98.8 | +87.3 | +88.3 | +81.7 | +61.8 | +71.8 | +77.2 | +100.6 | +136.9 | +179.5 | +276.1 |
 
-**Coverage.** 49/52 case pairs computed; the three dfvlr fills
-(M0.800, M0.825, M0.900) were still running when this table was
-snapshotted — `-` marks a pending pair. The table is regenerated
-mechanically from the delivered corpus (`tests3d/final_table.py` →
-`campaign/final_table.json/.md`, this block via
+**Coverage.** 52/52 case pairs computed — the three dfvlr fills
+(M0.800, M0.825, M0.900) landed 2026-10-18 and are integrated here. The
+table is regenerated mechanically from the delivered corpus
+(`tests3d/final_table.py` → `campaign/final_table.json/.md`, this block via
 `tests3d/gen_report_section.py`); the full 52-row raw table lives in
 `campaign/final_table.md`.
 
-**Within 10% (converged rows).** 10/49 overall —
+**Within 10% (converged rows).** 10/52 overall —
 - rae2822: **9/13** (M0.75–0.975 except M0.925 at −10.3%; mean 20.2% pulled up by the high-M blowups)
 - naca0012: 1/13 (M1.05 at −9.9%; mean 25.2%)
 - biconvex: 0/13 (best −12.6% at M1.05; mean 24.4%)
-- dfvlr_r4: 0/10 (mean 122.6%)
+- dfvlr_r4: 0/13 (mean 113.3%)
 
 Reading notes: error = (CL_TSD − CL_OF)/CL_OF × 100 at each (geometry, Mach);
 computed cells use converged OF values (t=0.25) and converged TSD epochs;
@@ -173,7 +172,8 @@ section through the mid-band.
 geometries.** At M0.85, OF gives naca 0.0728, biconvex 0.0729, rae 0.2510,
 dfvlr 0.2674 — the two cambered sections move together (6% apart for 65%
 more camber) and the two symmetric sections are identical to 3 digits. The
-cambered peak at M0.925 is 0.2778/0.2780 for rae/dfvlr. TSD instead scales
+cambered peak reads 0.2778 (rae, M0.925) / 0.2791 (dfvlr, M0.900 — new 86k
+fill). TSD instead scales
 physically with camber: naca 0.0506, biconvex 0.0484, rae 0.2491, dfvlr
 0.5036 (panel imprint: 0.0541 / — / 0.3352 / 0.6260).
 
@@ -181,15 +181,17 @@ physically with camber: naca 0.0506, biconvex 0.0484, rae 0.2491, dfvlr
 symmetry side-planes (tip relief suppressed), the TSD wing is free-tipped. A
 span-6 TSD diagnostic at M0.85 gives CL=0.1101 — the OF value 0.0728 lies
 between the free AR1.6 (0.0506) and AR6 (0.1101) values (≈ free AR2.2 by
-interpolation), consistent with the wall-constrained slab suppressing part
-of the tip relief relative to a truly free AR1.6 wing. Wall interference of
-this magnitude is the expected corner of the pairing; the residual is
-numerical (central-upwind dissipation in `rhoCentralFoam`) and/or the
-imprint's shock modeling.
+interpolation). A direct control settles it: the same case with the tips
+freed (y-faces folded into the farfield,
+`campaign_freetip/naca0012_M0.850_a1.25`) converges to CL=0.0629 — the
+wall-confined slab inflates the symmetric section by ~16%, so just under
+half of the +44% naca gap is configuration and the rest is free-vs-free
+numerical/imprint difference, which the grid-refinement study narrows
+further (`ERROR_REDUCTION_SCOPE.md` §§2, 4).
 
 **The dfvlr case exposes the OF saturation ceiling.** OF: rae 0.2510 →
 dfvlr 0.2674 at M0.85 (6% more lift for a section with 65% more camber),
-saturating at ~0.278 by M0.925. TSD: 0.2491 → 0.5036 (+102%). The OF
+saturating at ~0.279 around M0.9–0.925. TSD: 0.2491 → 0.5036 (+102%). The OF
 solution family behaves as if circulation saturates under the stronger shock
 system; the TSD keeps the response near-imprint. This is the single largest
 divergence in the table (+88% at M0.85, growing to +276% at M1.05 as the OF
@@ -205,7 +207,7 @@ M1.0 → 1.05) while the symmetric naca error improves toward the OF floor
 **Overall.** The under-10% target is met for the rae mid-band (M0.75–0.975,
 nine stations of ten) and at the high-M end of the naca band (M1.05, −9.9%);
 the symmetric sections otherwise sit −10…−40% below OF (tip-relief/configuration
-+ dissipation) and the strong-camber dfvlr case overshoots by +72…+276% as
++ dissipation) and the strong-camber dfvlr case overshoots by +62…+276% as
 the OF lift collapses under its shock system. These are reported honestly in
 §6 rather than tuned away: the campaign measures a configuration-level,
 branch-sensitive comparison, not a like-for-like free-flight match.
@@ -247,6 +249,13 @@ python tests3d/cli_battery.py --jobs 3
   M0.75–0.825 and 0.90 ran on 86,145 cells while 0.85/0.875/0.925–1.10 ran
   on 45,606 (naca/biconvex uniform). Cross-row comparisons inherit this
   heterogeneity; a same-mesh re-run program is scoped there.
+- The TSD side of §6 uses the campaign grid (80×32×32, 8 epochs). The
+  M0.85 refinement study (`tests3d/tsd_convergence.json`, see
+  `ERROR_REDUCTION_SCOPE.md` §4) shows finer grids move TSD CL by up to
+  +13% (naca), −9% (dfvlr), and a non-monotone +4/−13% (rae) — with naca
+  and dfvlr agreeing between the 120×48×48 and 160×64×64 grids to ≈1%.
+  Campaign TSD values are therefore not grid-converged and a reconfirmation
+  sweep is in progress; §6 stands as the as-run campaign record.
 - TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
   ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr
   error cells carry that much extra reporting noise.

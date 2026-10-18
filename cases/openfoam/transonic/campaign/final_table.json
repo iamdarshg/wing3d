@@ -453,24 +453,24 @@
  {
   "geo": "dfvlr_r4",
   "M": 0.8,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2600451,
+  "of_cd": 0.03138443,
   "tsd_cl": 0.5169832391860755,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 98.80522231954208,
+  "source": "new"
  },
  {
   "geo": "dfvlr_r4",
   "M": 0.825,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2640821,
+  "of_cd": 0.03584305,
   "tsd_cl": 0.4945487335750776,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 87.27082735826383,
+  "source": "new"
  },
  {
   "geo": "dfvlr_r4",
@@ -497,13 +497,13 @@
  {
   "geo": "dfvlr_r4",
   "M": 0.9,
-  "status": "-",
-  "of_t": null,
-  "of_cl": null,
-  "of_cd": null,
+  "status": "CONV",
+  "of_t": 0.25,
+  "of_cl": 0.2791015,
+  "of_cd": 0.06086909,
   "tsd_cl": 0.4515527059358044,
-  "err_pct": null,
-  "source": "-"
+  "err_pct": 61.78798965100667,
+  "source": "new"
  },
  {
   "geo": "dfvlr_r4",
