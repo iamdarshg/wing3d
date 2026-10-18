@@ -18,7 +18,7 @@ rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
 
 | # | Lever | Affected cells | Measured evidence | Cost | Expected |
 |---|-------|----------------|-------------------|------|----------|
-| L1 | **Config pairing**: OF is wall-at-tip, TSD is free-tip | naca/biconvex −20…−40%; rae S-shape | Probe A **done**: OF free-tip (naca M0.85) = 0.0629 vs wall 0.0728 → wall inflates +15.9%; free-vs-free residual +24% at campaign grid, **+9.7% at g120** | done (5.3 h) | ≈16 pp of the +44% naca gap is config; free-vs-free under 10% once grid-matched |
+| L1 | **Config pairing**: OF is wall-at-tip, TSD is free-tip | naca/biconvex −20…−40%; rae S-shape | Probe A **done**: OF free-tip (naca M0.85) = 0.0629 vs wall 0.0728 → wall inflates +15.8%; free-vs-free residual +24% at campaign grid, **+9.7% at g120** | done (5.3 h) | ≈16 pp of the +44% naca gap is config; free-vs-free under 10% once grid-matched |
 | L2 | **Corpus mesh seams** (mixed resolutions per row) | rae (48k vs 54k); dfvlr (45.6k vs 86k) | fills landed: dfvlr CL deltas across the seams run +1.3/+2.1/+2.3% — smooth through both transitions (§3) | done | **≤ ~1%; closed as immaterial** |
 | L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study **done** at M0.85: naca +13.3% (g120≈g160 within 0.9%), dfvlr −7.3% (g120≈g160 within 1.5%), rae +4.2% with g160 −13.2% (non-monotone); box inert ≤1.4% | study done; g120ep16 reconfirmations running | **the largest single lever: ±4…13% CL, sign per geo** |
 | L4 | **TSD estimator + imprint resolution** | all; dfvlr wobble | ep16 at g80 moves toward the fine-grid answer (naca +4.2%, dfvlr −3.5%); drift evidence §1.3 | folded into L3 study | ≤ ~4%; subsumed by L3 |
@@ -117,9 +117,9 @@ y-faces moved into the `farfield` patch (freestream BCs, true free tips at
 `tests3d/probe_naca_freetip_M085_coefficient.dat`).
 
 **Decomposition (naca M0.85):**
-- wall-tip inflation: 0.0728/0.0629 − 1 = **+15.9%** — config is ≈45% of the
+- wall-tip inflation: 0.0728/0.0629 − 1 = **+15.8%** — config is ≈45% of the
   +43.9% gap (consistent with the earlier AR2.2 interpolation estimate);
-- free-vs-free residual: 0.0629/0.0506 − 1 = **+24.3%**, most of which is
+- free-vs-free residual: 0.0629/0.0506 − 1 = **+24.2%**, most of which is
   TSD grid under-resolution (§4): at g120 (0.0573) the gap is **+9.7%**.
 
 Verdict: config confirmed as a real but partial driver; config + grid
