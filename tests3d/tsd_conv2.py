@@ -3,8 +3,12 @@
 Follow-up to tsd_convergence.py (which found g80/g120/g160/ep16 at M0.85):
 this confirms g120+ep16 at the campaign M points and other (geo, M).
 
-Usage: python tsd_conv2.py <geo> <M>      (one process per run)
-Writes tests3d/tsd_conv2_<geo>_M<M>.json.
+Usage: python tsd_conv2.py <geo> <M>                   (g120 ep16)
+       python tsd_conv2.py <geo> <M> <nx> <ny> <nz> [ep]
+                                                       (custom grid/epochs;
+                                                        e.g. rae g160 ep16)
+Writes tests3d/tsd_conv2_<geo>_M<M>.json (custom grids get a _g<grid> tag;
+default-grid runs keep the plain name).
 """
 import json
 import os
@@ -33,25 +37,31 @@ def campaign_cl(geo, M):
 def main():
     geo = sys.argv[1]
     M = float(sys.argv[2])
+    nx, ny, nz, ep = NX, NY, NZ, EP
+    if len(sys.argv) >= 6:
+        nx, ny, nz = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+    if len(sys.argv) >= 7:
+        ep = int(sys.argv[6])
+    label = '' if (nx, ny, nz) == (NX, NY, NZ) else '_g%dx%dx%d' % (nx, ny, nz)
     prof = build_profile(geo)
     sec = build_section(geo)
     ref = campaign_cl(geo, M)
-    print('== %s M=%.3f campaign CL=%s (g120 ep16)'
-          % (geo, M, ref), flush=True)
+    print('== %s M=%.3f campaign CL=%s (g%dx%dx%d ep%d)'
+          % (geo, M, ref, nx, ny, nz, ep), flush=True)
     t0 = time.time()
-    base, _r, _m = build_case(0.3, 1.25, False, True, None, NX, NY, NZ,
+    base, _r, _m = build_case(0.3, 1.25, False, True, None, nx, ny, nz,
                               1.6, section=sec)
-    L, xc, ix, j0 = run_sup(M, span=1.6, epochs=EP, free_k=False,
+    L, xc, ix, j0 = run_sup(M, span=1.6, epochs=ep, free_k=False,
                             profile=prof, section=sec, base=base)
     cl = float(L['CL'])
     d = (cl - ref) / ref * 100 if ref else float('nan')
-    rec = {'geo': geo, 'M': M, 'grid': [NX, NY, NZ], 'epochs': EP,
+    rec = {'geo': geo, 'M': M, 'grid': [nx, ny, nz], 'epochs': ep,
            'CL': cl, 'campaign_CL': ref, 'delta_pct': d,
            'secs': time.time() - t0}
-    out = 'tests3d/tsd_conv2_%s_M%.3f.json' % (geo, M)
+    out = 'tests3d/tsd_conv2_%s_M%.3f%s.json' % (geo, M, label)
     json.dump(rec, open(out, 'w'), indent=1)
-    print('RESULT g120ep16 %s M=%.3f CL=%.5f d=%+.2f%% (%.0fs) -> %s'
-          % (geo, M, cl, d, rec['secs'], out), flush=True)
+    print('RESULT g%dx%dx%d ep%d %s M=%.3f CL=%.5f d=%+.2f%% (%.0fs) -> %s'
+          % (nx, ny, nz, ep, geo, M, cl, d, rec['secs'], out), flush=True)
 
 
 if __name__ == '__main__':
