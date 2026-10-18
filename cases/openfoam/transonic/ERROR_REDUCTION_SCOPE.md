@@ -4,10 +4,11 @@ Internal analysis: where the next few percent of error can come from, ranked
 by evidence and cost. Companion to `CAMPAIGN_REPORT.md`; table mechanics live
 in `campaign/final_table.*` + `tests3d/{final_table,gen_report_section}.py`.
 
-Status (2026-10-18 ~14:30 host): **52/52 pairs, 10/52 within 10% as-run** —
-the fills, CLI battery (12/12), Probe A (free-tip OF), and the grid/epoch
-study are all complete and folded in below; dfvlr ceiling probes (86k
-remesh) and g120/ep16 reconfirmation runs are in flight.
+Status (2026-10-18 ~15:45 host): **52/52 pairs, 10/52 within 10% as-run** —
+the fills, CLI battery (12/12), Probe A (free-tip OF), the grid/epoch
+study, and the first g120ep16 M0.85 confirmations (rae, naca) are complete
+and folded in below; dfvlr ceiling probes (86k remesh, ETA ~17:45) and the
+remaining g120ep16 confirmations are in flight.
 
 Metric: `err% = (CL_TSD − CL_OF)/CL_OF` at each (geo, M), α=1.25°, OF =
 rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
@@ -18,9 +19,9 @@ rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
 
 | # | Lever | Affected cells | Measured evidence | Cost | Expected |
 |---|-------|----------------|-------------------|------|----------|
-| L1 | **Config pairing**: OF is wall-at-tip, TSD is free-tip | naca/biconvex −20…−40%; rae S-shape | Probe A **done**: OF free-tip (naca M0.85) = 0.0629 vs wall 0.0728 → wall inflates +15.8%; free-vs-free residual +24% at campaign grid, **+9.7% at g120** | done (5.3 h) | ≈16 pp of the +44% naca gap is config; free-vs-free under 10% once grid-matched |
+| L1 | **Config pairing**: OF is wall-at-tip, TSD is free-tip | naca/biconvex −20…−40%; rae S-shape | Probe A **done**: OF free-tip (naca M0.85) = 0.0629 vs wall 0.0728 → wall inflates +15.8%; free-vs-free residual +24.2% at campaign grid, **+10.4% at g120ep16** | done (5.3 h) | ≈16 pp of the +44% naca gap is config; free-vs-free ≈ +10.4% once grid-converged |
 | L2 | **Corpus mesh seams** (mixed resolutions per row) | rae (48k vs 54k); dfvlr (45.6k vs 86k) | fills landed: dfvlr CL deltas across the seams run +1.3/+2.1/+2.3% — smooth through both transitions (§3) | done | **≤ ~1%; closed as immaterial** |
-| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study **done** at M0.85: naca +13.3% (g120≈g160 within 0.9%), dfvlr −7.3% (g120≈g160 within 1.5%), rae +4.2% with g160 −13.2% (non-monotone); box inert ≤1.4% | study done; g120ep16 reconfirmations running | **the largest single lever: ±4…13% CL, sign per geo** |
+| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + M0.85 confirmations **done** for 2 of 4 geos: naca +12.5% (g120ep16), rae +4.0% (stable), dfvlr −7.3% (g120ep8; ep16 running), biconvex (running); rae g160 "−13%" = ep8 under-iteration; box inert ≤1.4% | confirmations running | **the largest single lever: ±4…13% CL, sign per geo** |
 | L4 | **TSD estimator + imprint resolution** | all; dfvlr wobble | ep16 at g80 moves toward the fine-grid answer (naca +4.2%, dfvlr −3.5%); drift evidence §1.3 | folded into L3 study | ≤ ~4%; subsumed by L3 |
 | L5 | **OF scheme/refinement at the ceiling** | dfvlr +62…+276%; rae M1.0+ | rae peak 0.2778 @ M0.925; dfvlr peak 0.2791 @ M0.900 (new 86k); ceiling probes **running** (dfvlr M0.925 + M1.000 re-run on the 86k mesh) | ~5 h, in flight | may explain part of the dfvlr "saturation" |
 | L6 | Mach-alignment accounting | all ±1.5 pp; dfvlr ±4.5 pp | aligned-M table (§1.2) | doc-only | not a fix; band note only |
@@ -120,12 +121,15 @@ y-faces moved into the `farfield` patch (freestream BCs, true free tips at
 - wall-tip inflation: 0.0728/0.0629 − 1 = **+15.8%** — config is ≈45% of the
   +43.9% gap (consistent with the earlier AR2.2 interpolation estimate);
 - free-vs-free residual: 0.0629/0.0506 − 1 = **+24.2%**, most of which is
-  TSD grid under-resolution (§4): at g120 (0.0573) the gap is **+9.7%**.
+  TSD grid under-resolution (§4): at the converged g120ep16 value (0.0569)
+  the gap is **+10.4%**.
 
 Verdict: config confirmed as a real but partial driver; config + grid
-together take the naca M0.85 pairing under 10%. Cheap path is the
-grid-corrected TSD numbers plus this decomposition (now in
-`CAMPAIGN_REPORT.md` §7) — not a physical re-pair.
+take the naca M0.85 pairing from −30.5% as-run to ≈**+10%** free-vs-free
+(**+10.4%** at g120ep16) — just over the line, the remainder being
+free-vs-free numerics. Cheap path is the grid-corrected TSD numbers plus
+this decomposition (now in `CAMPAIGN_REPORT.md` §7) — not a physical
+re-pair.
 
 **Probe B (optional dev; NOT required by the Probe A verdict): TSD wall-mode
 via method of images.** The span loading Γ(y) and the imprint come from the panel solve
@@ -194,19 +198,43 @@ solver is deterministic given identical inputs, so rae/dfvlr's ±0.7–1.9%
 scatter comes from their STL-derived section inputs.)
 
 **Findings:** (i) grid sensitivity is REAL and large — up to +13% (naca),
-−7…−9% (dfvlr), non-monotone +4/−13% (rae); (ii) naca and dfvlr agree to
-≈1% between g120 and g160 → converged values ≈ 0.057 (naca) and ≈ 0.46
+−7…−9% (dfvlr), ≈+4% (rae, below); (ii) naca and dfvlr agree to ≈1%
+between g120 and g160 → converged values ≈ 0.057 (naca) and ≈ 0.46
 (dfvlr); (iii) the enlarged box is inert (≤1.4%) — farfield truncation is
 NOT a lever; (iv) ep16 at g80 moves in the same direction as grid
 refinement (naca +4.2%, dfvlr −3.5%) — the campaign's 8 epochs were also
-under-iterated. Consequences: campaign TSD values are not grid-converged
-(carried as an as-run caveat in `CAMPAIGN_REPORT.md` §9); at M0.85 the
-corrected pairings are naca: OF-free 0.0629 vs TSD-g120 0.0573 = **+9.7%**
-(down from +43.9% as-run); dfvlr: 0.2674 vs ≈0.46 → −42% (the saturation
-deepens — that error is NOT grid). A g120+ep16 reconfirmation (rae/naca/
-dfvlr M0.85, plus naca M0.95/1.05 spot-checks) is in flight; a full
-table-wide g120 re-sweep (≈40+ h host) is justified only if converged
-values are needed for every cell.
+under-iterated.
+
+**The rae g160 "−13%" is under-iteration, not grid behavior.** Its g160
+epoch trajectory never settles: CL falls monotonically through ep7
+(0.2375 → 0.2426 → 0.2388 → 0.2294 → 0.2224 → 0.2196 → 0.2182 → 0.2161)
+while the supersonic count keeps climbing (nsup 593 → 829 → 1015). 8
+epochs are not enough at 160×64×64; rae's fine-grid answer is its g120
+family (≈ +4%, below) and a g160 ep16 run is queued.
+
+**Second-stage confirmations (g120 + ep16, `tests3d/tsd_conv2.py`):**
+
+| run | campaign | g120ep16 | vs campaign | vs g120ep8 | status |
+|-----|----------|----------|-------------|------------|--------|
+| rae2822 M0.85 | 0.24907 | **0.25906** | **+4.01%** | −0.18% | done — stable (0.258–0.261 from ep2) |
+| naca0012 M0.85 | 0.05060 | **0.05693** | **+12.49%** | −0.69% | done — 0.0568–0.0573 family (±1% wobble) |
+| dfvlr_r4 M0.85 | 0.50364 | running | | | resolves the still-falling g120ep8 tail |
+| biconvex M0.85 | 0.04839 | running | | | symmetric-family generality |
+| naca0012 M0.95 | 0.05157 | running | | | per-M robustness |
+
+Consequences: campaign TSD values are not grid-converged (as-run caveat,
+`CAMPAIGN_REPORT.md` §9). Corrected M0.85 pairings:
+- **naca**: OF-free 0.0629 vs TSD-converged 0.0569 → **+10.4%** (from
+  −30.5% as-run wall-paired; from +43.9% free-vs-free) — just over the
+  10% line after both levers.
+- **rae** (wall-paired all along): OF 0.2510 vs TSD 0.2591 → **+3.2%**
+  (as-run −0.8%; the grid correction moves rae *up*).
+- **dfvlr**: 0.2674 vs ≈0.46 → −42% — the saturation deepens; that error
+  is NOT grid (L5 probes test the OF side).
+
+A full table-wide g120 re-sweep (≈40+ h host) is justified only if
+converged values are needed for every cell; the M0.85 four-geometry block
+is the representative set.
 
 L4 status: ep16 confirms the epoch sensitivity is real but second-order vs
 grid (≤ ~4%); the 48×24 panel-imprint variant (generalize the strip
@@ -242,8 +270,9 @@ documentation case rather than an error to reduce.
 1. dfvlr fills → 52/52 — **done 2026-10-18**; §6/§7/§9 refreshed and
    committed (`ebec6d7`).
 2. Probe A → L1 — **done** (CL = 0.06287; config ≈ 45% of the naca gap, §2).
-3. TSD convergence study → L3/L4 — **done** (numbers in §4); g120/ep16
-   reconfirmations + naca M0.95/1.05 spot-checks running on host.
+3. TSD convergence study → L3/L4 — **done**; M0.85 g120ep16 confirmations
+   landed for rae (+4.01%) and naca (+12.49%); dfvlr/biconvex + naca
+   M0.95/1.05 running on host; rae g160ep16 (under-iteration fix) queued.
 4. Seam verdict from fills — **done, closed** (§3): mesh heterogeneity
    ≤ ~1%.
 5. L5 ceiling probes (dfvlr 0.925 + 1.000 on the 86k cache) — **running**

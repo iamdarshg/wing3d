@@ -248,14 +248,16 @@ python tests3d/cli_battery.py --jobs 3
   48,114-cell meshes while 0.875 and 0.925–1.10 ran on 53,946; dfvlr_r4
   M0.75–0.825 and 0.90 ran on 86,145 cells while 0.85/0.875/0.925–1.10 ran
   on 45,606 (naca/biconvex uniform). Cross-row comparisons inherit this
-  heterogeneity; a same-mesh re-run program is scoped there.
+  heterogeneity; the seam check on the completed dfvlr curve came back
+  ≤ ~1% of trend (`ERROR_REDUCTION_SCOPE.md` §3) — closed as immaterial.
 - The TSD side of §6 uses the campaign grid (80×32×32, 8 epochs). The
   M0.85 refinement study (`tests3d/tsd_convergence.json`, see
   `ERROR_REDUCTION_SCOPE.md` §4) shows finer grids move TSD CL by up to
-  +13% (naca), −9% (dfvlr), and a non-monotone +4/−13% (rae) — with naca
-  and dfvlr agreeing between the 120×48×48 and 160×64×64 grids to ≈1%.
-  Campaign TSD values are therefore not grid-converged and a reconfirmation
-  sweep is in progress; §6 stands as the as-run campaign record.
+  +13% (naca), −9% (dfvlr), ≈+4% (rae; its −13% g160 point was still
+  falling at ep8 — under-iteration, not grid). The g120+ep16
+  reconfirmations landed within 0.7% of the study (naca +12.49%, rae
+  +4.01% vs campaign; dfvlr/biconvex running). Campaign TSD values are
+  therefore not grid-converged; §6 stands as the as-run campaign record.
 - TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
   ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr
   error cells carry that much extra reporting noise.
