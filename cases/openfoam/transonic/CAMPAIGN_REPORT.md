@@ -250,14 +250,27 @@ python tests3d/cli_battery.py --jobs 3
   on 45,606 (naca/biconvex uniform). Cross-row comparisons inherit this
   heterogeneity; the seam check on the completed dfvlr curve came back
   ≤ ~1% of trend (`ERROR_REDUCTION_SCOPE.md` §3) — closed as immaterial.
+- L5 mesh-side caution (dfvlr 45.6k rows): the preserved coarse meshes
+  fail checkMesh due to a points/topology mismatch, not geometry —
+  `constant/polyMesh/points` holds 59,360 points (59,311 good + 49
+  strays); the correctly snapped points live in `0/polyMesh/points`.
+  Topology + good points reassembled (`tmp_lane_fix.sh`) → lanes verify
+  "Mesh OK" → the coarse M0.925/M1.000 pair is re-running (verdict rule:
+  <1% refined-vs-coarse ΔCL → OF saturation genuine; ≥3% → resolution
+  program, `ERROR_REDUCTION_SCOPE.md` §5). Related L5 result: a
+  refined-mesh re-run of dfvlr M0.925/M1.000 reproduced the corpus
+  `.coeff` values **bit-exactly** (all 12 columns) — rhoCentralFoam is
+  run-to-run bit-reproducible here, and the corpus ceiling values are
+  already refined-mesh (86k) runs.
 - The TSD side of §6 uses the campaign grid (80×32×32, 8 epochs). The
   M0.85 refinement study (`tests3d/tsd_convergence.json`, see
   `ERROR_REDUCTION_SCOPE.md` §4) shows finer grids move TSD CL by up to
   +13% (naca), −9% (dfvlr), ≈+4% (rae; its −13% g160 point was still
   falling at ep8 — under-iteration, not grid). The g120+ep16
   reconfirmations landed within 0.7% of the study (naca +12.49%, rae
-  +4.01% vs campaign; dfvlr/biconvex running). Campaign TSD values are
-  therefore not grid-converged; §6 stands as the as-run campaign record.
+  +4.01%, biconvex +12.81%, dfvlr −18.22% still drifting vs campaign).
+  Campaign TSD values are therefore not grid-converged; §6 stands as the
+  as-run campaign record.
 - TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
   ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr
   error cells carry that much extra reporting noise.
