@@ -228,7 +228,8 @@ epoch trajectory never settles: CL falls monotonically through ep7
 (0.2375 → 0.2426 → 0.2388 → 0.2294 → 0.2224 → 0.2196 → 0.2182 → 0.2161)
 while the supersonic count keeps climbing (nsup 593 → 829 → 1015). 8
 epochs are not enough at 160×64×64; rae's fine-grid answer is its g120
-family (≈ +4%, below) and a g160 ep16 run is queued.
+family (≈ +4%, below) and a g160 ep16 run followed (launched 2026-10-20
+15:25).
 
 **Second-stage confirmations (g120 + ep16, `tests3d/tsd_conv2.py`):**
 
@@ -297,8 +298,8 @@ combined the time-dir points over constant topology (hence the confusing
 solver died at Time ≈ 4e-05). Fix (`tmp_lane_fix.sh`): assemble the good
 topology (`constant/polyMesh`) + the good points (`0/polyMesh/points`) →
 both lanes now verify **"Mesh OK" (59,311 pts / 45,606 cells)** and
-`rhoCentralFoam` is running M0.925/M1.000 to t=0.25 (same protocol as the
-corpus — already past the old crash point, CL in `coeff_last.dat`-equivalent
+`rhoCentralFoam` ran M0.925/M1.000 to t=0.25 (same protocol as the
+corpus — past the old crash point, CL in `coeff_last.dat`-equivalent
 `coefficient.dat`). Good-points md5 `ad7b845b4ae4da6e3cce44f936379a3a`;
 faces/owner/neighbour/boundary were identical everywhere.
 
