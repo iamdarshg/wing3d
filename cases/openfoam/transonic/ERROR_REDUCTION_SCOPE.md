@@ -243,7 +243,7 @@ family (≈ +4%, below) and a g160 ep16 run followed (launched 2026-10-20
 | dfvlr_r4 M0.85 | 0.50364 | **0.41187** | **−18.22%** | **−11.78%** | done — NOT settled (0.5188→0.4119; −1.3/−1.6/+0.4% at ep12–15) |
 | naca0012 M1.05 | 0.05220 | **0.05892** | **+12.89%** | — | done — flat 0.0589 from ep5 (nsup ~271k) |
 | dfvlr_r4 M0.85 g160ep16 | 0.50364 | **0.45354** | **−9.95%** | — | done — 0.4875→0.4535; still −1.0% in the last epoch (NOT settled) |
-| rae2822 M0.85 g160ep16 | 0.24907 | **0.20561** | **−17.45%** | — | done — settled 0.2054–0.2056 (ep14–15); 20.6% below g120 = different shock branch |
+| rae2822 M0.85 g160ep16 | 0.24907 | **0.20561** | **−17.45%** | — | done — settled 0.2054–0.2056 (ep14–15); 20.6% below g120 (grid-dependent state) |
 
 Consequences: campaign TSD values are not grid-converged (as-run caveat,
 `CAMPAIGN_REPORT.md` §9). Corrected M0.85 pairings:
@@ -252,8 +252,9 @@ Consequences: campaign TSD values are not grid-converged (as-run caveat,
   10% line after both levers.
 - **rae** (wall-paired all along): OF 0.2510 vs TSD 0.2591 → **+3.2%**
   (as-run −0.8%; the g120 grid correction moves rae *up*). **But the g160
-  grid settles at 0.2056 (−17.5% vs campaign) — 20.6% below g120**, i.e.
-  a grid-selected shock branch, so the finest-grid rae pairing is
+  grid settles at 0.2056 (−17.5% vs campaign) — 20.6% below g120**, a
+  grid-dependent shock state (branch vs fine-grid artifact unresolved),
+  so the finest-grid rae pairing is
   OF/TSD = **+22.1%**, not +3.2%. The rae +3.2% is a g120-grid result,
   and the rae under-10% mid-band claim is a coarse-grid result: rae is
   one of the cases where grid convergence changes the verdict.

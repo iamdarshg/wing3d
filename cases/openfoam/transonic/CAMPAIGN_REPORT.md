@@ -279,7 +279,8 @@ python tests3d/cli_battery.py --jobs 3
   (+12.89%, flat from ep5). The dfvlr g160ep16 run landed at −9.95% vs
   campaign (0.45354) but was still −1.0% in its last epoch; the rae g160
   rerun settled at 0.2056 after 14–15 epochs (−17.5% vs campaign, 20.6%
-  below the g120ep16 value — a grid-selected shock branch; the first
+  below the g120ep16 value — a grid-dependent shock state, branch vs
+  fine-grid artifact unresolved; the first
   attempt died at ep12 from host memory exhaustion, 0.37 GB free,
   traceback in `tests3d/tsd_conv2_rae2822_M0.85_g160_ep12_memkill.err`,
   and was rerun with per-epoch checkpointing). At 160×64×64 the
