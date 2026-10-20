@@ -255,13 +255,15 @@ python tests3d/cli_battery.py --jobs 3
   `constant/polyMesh/points` holds 59,360 points (59,311 good + 49
   strays); the correctly snapped points live in `0/polyMesh/points`.
   Topology + good points reassembled (`tmp_lane_fix.sh`) → lanes verify
-  "Mesh OK" → the coarse M0.925/M1.000 pair is re-running (verdict rule:
-  <1% refined-vs-coarse ΔCL → OF saturation genuine; ≥3% → resolution
-  program, `ERROR_REDUCTION_SCOPE.md` §5). Related L5 result: a
-  refined-mesh re-run of dfvlr M0.925/M1.000 reproduced the corpus
-  `.coeff` values **bit-exactly** (all 12 columns) — rhoCentralFoam is
-  run-to-run bit-reproducible here, and the corpus ceiling values are
-  already refined-mesh (86k) runs.
+  "Mesh OK" → the coarse pair **completed** at t=0.25: CL = 0.3626993
+  (M0.925) / 0.2529717 (M1.000) vs refined 0.2779525 / 0.2126116 →
+  **+30.5% / +19.0%** → **resolution matters** (verdict rule: <1% →
+  saturation genuine; ≥3% → resolution program;
+  `ERROR_REDUCTION_SCOPE.md` §5). Related L5 result: a refined-mesh
+  re-run of dfvlr M0.925/M1.000 reproduced the corpus `.coeff` values
+  **bit-exactly** (all 12 columns) — rhoCentralFoam is run-to-run
+  bit-reproducible here, the corpus ceiling values are refined-mesh (86k)
+  runs, and those anchors are strongly mesh-sensitive (not mesh-converged).
 - The TSD side of §6 uses the campaign grid (80×32×32, 8 epochs). The
   M0.85 refinement study (`tests3d/tsd_convergence.json`, see
   `ERROR_REDUCTION_SCOPE.md` §4) shows finer grids move TSD CL by up to

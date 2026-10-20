@@ -4,18 +4,23 @@ Internal analysis: where the next few percent of error can come from, ranked
 by evidence and cost. Companion to `CAMPAIGN_REPORT.md`; table mechanics live
 in `campaign/final_table.*` + `tests3d/{final_table,gen_report_section}.py`.
 
-Status (2026-10-19 ~18:50 host): **52/52 pairs, 10/52 within 10% as-run** —
+Status (2026-10-20 ~14:45 host): **52/52 pairs, 10/52 within 10% as-run** —
 fills, CLI battery (12/12), Probe A, the grid/epoch study, and the full
 g120ep16 confirmation set (rae +4.0%, naca +12.5%, biconvex +12.8%, naca
 M0.95 +6.7%, dfvlr −18.2% and still drifting) are complete and folded in
-below. rae g160ep16 + dfvlr g160ep16 are running on host (launched 18:15).
-L5: the first probe pair reproduced the corpus ceiling values bit-exactly
-on the same (refined) mesh — a determinism check, not a mesh test — and
-the preserved coarse mesh's checkMesh failure is now **root-caused**: the
-`constant` points file carries 49 stray points (59,360 vs the required
-59,311); the real snapped points were in `0/polyMesh/points` all along.
-Topology + good points assembled → lanes verify "Mesh OK" → the coarse
-re-probe pair (M0.925/M1.000) is **running** (§5).
+below. Host lanes were terminated by a machine restart at 2026-10-19
+21:19 (no campaign data lost); restarted 2026-10-20 13:48 under a 2-lane
+cap. L5: the first probe pair reproduced the corpus ceiling values
+bit-exactly on the same (refined) mesh — a determinism check, not a mesh
+test — and the preserved coarse mesh's checkMesh failure is now
+**root-caused**: the `constant` points file carries 49 stray points
+(59,360 vs the required 59,311); the real snapped points were in
+`0/polyMesh/points` all along. Topology + good points assembled → lanes
+verify "Mesh OK" → the coarse re-probe pair (M0.925/M1.000) **completed**
+(resumed from t=0.15 after the restart): CL = 0.3626993 / 0.2529717 vs
+refined 0.2779525 / 0.2126116 → **+30.5% / +19.0% → resolution matters**
+(§5). The dfvlr transonic rows are strongly mesh-sensitive; the corpus
+anchors are refined-mesh values but are not demonstrably mesh-converged.
 
 Metric: `err% = (CL_TSD − CL_OF)/CL_OF` at each (geo, M), α=1.25°, OF =
 rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
@@ -28,9 +33,9 @@ rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
 |---|-------|----------------|-------------------|------|----------|
 | L1 | **Config pairing**: OF is wall-at-tip, TSD is free-tip | naca/biconvex −20…−40%; rae S-shape | Probe A **done**: OF free-tip (naca M0.85) = 0.0629 vs wall 0.0728 → wall inflates +15.8%; free-vs-free residual +24.2% at campaign grid, **+10.4% at g120ep16** | done (5.3 h) | ≈16 pp of the +44% naca gap is config; free-vs-free ≈ +10.4% once grid-converged |
 | L2 | **Corpus mesh seams** (mixed resolutions per row) | rae (48k vs 54k); dfvlr (45.6k vs 86k) | fills landed: dfvlr CL deltas across the seams run +1.3/+2.1/+2.3% — smooth through both transitions (§3) | done | **≤ ~1%; closed as immaterial** |
-| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + g120ep16 confirmations **done** (4 geos, 5 cells): rae +4.0% (stable), naca +12.5%, biconvex +12.8%, naca M0.95 +6.7%, dfvlr −18.2% ep16 (was −7.3% at ep8 — the ep8 g120/g160 "agreement" was under-iteration); rae g160 "−13%" = same pattern; box inert ≤1.4% | rae/dfvlr g160ep16 running | **the largest single lever: −18…+13% CL, sign per geo** |
+| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + g120ep16 confirmations **done** (4 geos, 5 cells): rae +4.0% (stable), naca +12.5%, biconvex +12.8%, naca M0.95 +6.7%, dfvlr −18.2% ep16 (was −7.3% at ep8 — the ep8 g120/g160 "agreement" was under-iteration); rae g160 "−13%" = same pattern; box inert ≤1.4% | dfvlr g160ep16 + naca M1.05 running (restarted 10-20); rae g160 queued | **the largest single lever: −18…+13% CL, sign per geo** |
 | L4 | **TSD estimator + imprint resolution** | all; dfvlr wobble | ep16 at g80 moves toward the fine-grid answer (naca +4.2%, dfvlr −3.5%); drift evidence §1.3 | folded into L3 study | ≤ ~4%; subsumed by L3 |
-| L5 | **OF scheme/refinement at the ceiling** | dfvlr +62…+276%; rae M1.0+ | dfvlr peak 0.2791 @ M0.900; M0.925/M1.000 probe pair reproduced the corpus values **bit-exactly** → the corpus ceiling values are already refined-mesh (86k) runs (solver deterministic); the preserved 45.6k mesh's checkMesh failure is **root-caused** (constant points = 59,360 with 49 strays; real snapped 59,311 points in `0/polyMesh`) → lanes fixed + coarse pair **running** (t=0.25, ~2–4 h) | in flight | <1% refined-vs-coarse ΔCL → saturation genuine; ≥3% → resolution program |
+| L5 | **OF scheme/refinement at the ceiling** | dfvlr +62…+276%; rae M1.0+ | dfvlr peak 0.2791 @ M0.900; M0.925/M1.000 probe pair reproduced the corpus values **bit-exactly** → the corpus ceiling values are already refined-mesh (86k) runs (solver deterministic); the preserved 45.6k mesh's checkMesh failure is **root-caused** (constant points = 59,360 with 49 strays; real snapped 59,311 points in `0/polyMesh`) → lanes fixed + coarse pair **complete to t=0.25**: CL 0.3626993 / 0.2529717 vs refined 0.2779525 / 0.2126116 = **+30.5% / +19.0%** | done | **resolution matters** — dfvlr anchors are mesh-sensitive, not mesh-converged; scheme variant (L5-2) unstaged |
 | L6 | Mach-alignment accounting | all ±1.5 pp; dfvlr ±4.5 pp | aligned-M table (§1.2) | doc-only | not a fix; band note only |
 
 ---
@@ -276,7 +281,7 @@ test does not exist in the corpus. (Parsing note: the 12-column file is
 time, Cd, Cd(f), Cd(r), Cl, Cl(f), Cl(r), Cm, ... — CL is column 5; the
 compare script's CD column-7 read hits Cl(rear), ignored.)
 
-**Attempt 2 (2026-10-19): coarse rebuild — ROOT CAUSE FOUND, pair RUNNING.**
+**Attempt 2 (2026-10-19/20): coarse rebuild — ROOT CAUSE FOUND, pair COMPLETE.**
 The preserved coarse mesh's checkMesh failure was a **points/topology
 mismatch, not geometry corruption**: `constant/polyMesh/points` carries
 59,360 points — the good 59,311 plus **49 stray points** (md5
@@ -294,12 +299,30 @@ corpus — already past the old crash point, CL in `coeff_last.dat`-equivalent
 `coefficient.dat`). Good-points md5 `ad7b845b4ae4da6e3cce44f936379a3a`;
 faces/owner/neighbour/boundary were identical everywhere.
 
+**Result (2026-10-20): resolution matters.** Both lanes reached `End` at
+t=0.25 (the 2026-10-19 21:19 machine restart killed the first attempt at
+t≈0.165; resumed from the 0.15 write-time dir after the reboot). Final
+CL: **0.3626993 (M0.925)** and **0.2529717 (M1.000)** vs the refined-mesh
+anchors 0.2779525 / 0.2126116 → **ΔCL = +30.5% / +19.0%**, far above the
+≥3% "resolution matters" threshold. The coarse mesh *over-predicts* CL
+(shock/LE-suction smearing), and the flow was settled long before t=0.25
+(CL flat from t≈0.16; the pre-shutdown read at t≈0.1656 differs by
+<0.05%). Consequence: the dfvlr OF anchors are refined-mesh values, but
+the 30% coarse→refined swing shows they are **not demonstrably mesh-
+converged** — the dfvlr high-M discrepancy cannot be attributed cleanly
+without a refinement program, and the scheme variant (L5-2) is now
+unstaged rather than merely pending. Evidence:
+`tests3d/l5_coarse_dfvlr_M0.925_45k.dat`, `...M1.000_45k.dat`; driver
+`tmp_l5_verdict.sh`.
+
 Decision rule (unchanged): if the refined-vs-coarse ΔCL is < ~1%, the OF
 saturation is genuine Euler behavior under this box/BC and the dfvlr row
 is a config/physics documentation case; if ≥ ~3%, resolution matters and
-the ceiling story merges with L2. The scheme variant (same case,
-less-dissipative flux scheme, fixed mesh; ~4–6 h) stays staged pending
-attempt 2.
+the ceiling story merges with L2. **Applied: +30.5% / +19.0% → resolution
+matters.** The L5 continuation is therefore an OF mesh-refinement program
+(coarse → refined → finer on the dfvlr high-M points), not the scheme
+swap; the scheme variant (same case, less-dissipative flux scheme, fixed
+mesh; ~4–6 h) is unstaged.
 
 ---
 
@@ -310,16 +333,18 @@ attempt 2.
 2. Probe A → L1 — **done** (CL = 0.06287; config ≈ 45% of the naca gap, §2).
 3. TSD convergence study → L3/L4 — **done**; the full g120ep16 set landed
    (rae +4.01%, naca +12.49%, biconvex +12.81%, naca M0.95 +6.71%, dfvlr
-   −18.22% still drifting); rae + dfvlr g160ep16 **running** on host
-   (launched 2026-10-19 18:15); naca M1.05 spot-check queued.
+   −18.22% still drifting). Host lanes were terminated by the 2026-10-19
+   21:19 machine restart; restarted 2026-10-20 13:48 under a 2-lane cap:
+   dfvlr g160ep16 + naca M1.05 running, rae g160ep16 queued behind naca.
 4. Seam verdict from fills — **done, closed** (§3): mesh heterogeneity
    ≤ ~1%.
-5. L5 ceiling probes — attempt 1 (86k re-run) disproved the intended
-   pairing by bit-exact reproduction (§5); the coarse checkMesh failure
+5. L5 ceiling probes — **done** (§5). Attempt 1 (86k re-run) disproved the
+   intended pairing by bit-exact reproduction; the coarse checkMesh failure
    root-caused as a points/topology mismatch (49 stray points in
-   `constant/polyMesh/points`; good points in `0/polyMesh/points`) → lanes
-   fixed (`tmp_lane_fix.sh`), coarse pair **running** in the container; the
-   scheme variant (L5-2) decided from its result.
+   `constant/polyMesh/points`; good points in `0/polyMesh/points`); lanes
+   fixed (`tmp_lane_fix.sh`), coarse pair completed to t=0.25 →
+   **ΔCL = +30.5% / +19.0% → resolution matters**. Follow-on = OF mesh
+   refinement program; the scheme variant (L5-2) is unstaged.
 6. CLI battery addendum to §2 — **done** (`4cce6c6`; 10/12 pairs ≤1%, two
    flags closed as termination position, §1.3).
 

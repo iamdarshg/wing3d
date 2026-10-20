@@ -15,7 +15,8 @@ A2=0.2126116   # refined-mesh anchor for M1.000
 printf '%-8s %-12s %-12s %8s %s\n' M 'CL_coarse' 'CL_refined' dCL verdict
 for spec in "$L1 $A1 0.925" "$L2 $A2 1.000"; do
   set -- $spec
-  line=$(tail -n 1 "$1/postProcessing/forces/0/coefficient.dat")
+  cfile=$(find "$1/postProcessing/forces" -name coefficient.dat -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+  line=$(tail -n 1 "$cfile")
   cl=$(echo "$line" | awk '{print $5}')
   d=$(awk -v c="$cl" -v a="$2" 'BEGIN{printf "%.2f", (c-a)/a*100}')
   ad=$(awk -v v="$d" 'BEGIN{if (v<0) v=-v; print v}')
