@@ -252,7 +252,10 @@ Consequences: campaign TSD values are not grid-converged (as-run caveat,
   −30.5% as-run wall-paired; from +43.9% free-vs-free) — just over the
   10% line after both levers.
 - **rae** (wall-paired all along): OF 0.2510 vs TSD 0.2591 → **+3.2%**
-  (as-run −0.8%; the grid correction moves rae *up*).
+  (as-run −0.8%; the g120 grid correction moves rae *up*). Caveat: the
+  g160 grid moves it the other way (ep12 0.2076, still falling), so rae's
+  grid-converged value is unresolved between ≈0.205 and ≈0.259 — the
+  +3.2% pairing is a g120 point, not a converged correction.
 - **dfvlr**: 0.2674 vs 0.4535 (g160ep16, still −1.0% in its last epoch) →
   OF/TSD−1 = **−41.0%** (as-run −46.9%; the g120ep16 −35.1% was
   grid/iteration-under-converged, not convergence). The TSD value keeps
