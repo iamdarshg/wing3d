@@ -20,7 +20,7 @@ from scipy.optimize import newton_krylov
 
 
 def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
-            base=None):
+            base=None, callback=None):
     if base is None:
         s, res, mesh = build_case(M, 1.25, False, True, None, 80, 32, 32,
                                   span, section=section)
@@ -83,6 +83,8 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         supn = int(s._sup_mask().sum())
         print('  ep %d: CL=%.4f k_mid=%.3f nsup=%d' % (
             ep, L['CL'], s.k[len(s.k) // 2], supn), flush=True)
+        if callback is not None:
+            callback(ep, float(L['CL']), supn)
     s._frozen = s._frozenA = s._frozenRho = None
     L = s.fp_loads()
     jy = np.asarray(s.wing_jy)

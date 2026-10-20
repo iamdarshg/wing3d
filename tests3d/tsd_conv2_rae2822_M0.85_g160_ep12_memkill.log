@@ -1,0 +1,16 @@
+=== START 20-10-2026 15:25:45.76 === 
+== rae2822 M=0.850 campaign CL=0.24906843266637088 (g160x64x64 ep16)
+  ep 0: CL=0.2375 k_mid=1.000 nsup=685
+  ep 1: CL=0.2426 k_mid=1.000 nsup=593
+  ep 2: CL=0.2388 k_mid=1.000 nsup=650
+  ep 3: CL=0.2294 k_mid=1.000 nsup=713
+  ep 4: CL=0.2224 k_mid=1.000 nsup=829
+  ep 5: CL=0.2196 k_mid=1.000 nsup=881
+  ep 6: CL=0.2182 k_mid=1.000 nsup=958
+  ep 7: CL=0.2161 k_mid=1.000 nsup=1015
+  ep 8: CL=0.2139 k_mid=1.000 nsup=1051
+  ep 9: CL=0.2124 k_mid=1.000 nsup=1110
+  ep 10: CL=0.2117 k_mid=1.000 nsup=1147
+  ep 11: CL=0.2091 k_mid=1.000 nsup=1147
+  ep 12: CL=0.2076 k_mid=1.000 nsup=1162
+=== EXITCODE=1 20-10-2026 17:58:09.11 === 

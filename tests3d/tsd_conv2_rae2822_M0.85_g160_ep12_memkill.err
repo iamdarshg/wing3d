@@ -1,0 +1,44 @@
+Traceback (most recent call last):
+  File "D:\CodeProjects\cfd\tests3d\tsd_conv2.py", line 68, in <module>
+    main()
+  File "D:\CodeProjects\cfd\tests3d\tsd_conv2.py", line 54, in main
+    L, xc, ix, j0 = run_sup(M, span=1.6, epochs=ep, free_k=False,
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\CodeProjects\cfd\tests3d\tsd_m_sup.py", line 77, in run_sup
+    y = newton_krylov(func, y0, iter=80, verbose=False,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 6, in newton_krylov
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\optimize\_nonlin.py", line 213, in nonlin_solve
+    dx = -jacobian.solve(Fx, tol=tol)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\optimize\_nonlin.py", line 1550, in solve
+    sol, info = self.method(self.op, rhs, rtol=tol, **self.method_kw)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\sparse\linalg\_isolve\lgmres.py", line 180, in lgmres
+    Q, R, B, vs, zs, y, pres = _fgmres(matvec,
+                               ^^^^^^^^^^^^^^^
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\sparse\linalg\_isolve\_gcrotmk.py", line 106, in _fgmres
+    w = lpsolve(matvec(z))
+                ^^^^^^^^^
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\sparse\linalg\_interface.py", line 258, in matvec
+    y = self._matvec(x)
+        ^^^^^^^^^^^^^^^
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\sparse\linalg\_interface.py", line 616, in _matvec
+    return self.__matvec_impl(x)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\optimize\_nonlin.py", line 1541, in matvec
+    r = (self.func(self.x0 + sc*v) - self.f0) / sc
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Darsh Gupta\AppData\Roaming\Python\Python312\site-packages\scipy\optimize\_nonlin.py", line 176, in func
+    return _as_inexact(F(_array_like(z, x0))).flatten()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\CodeProjects\cfd\tests3d\tsd_m_sup.py", line 55, in func
+    R = s.residual()
+        ^^^^^^^^^^^^
+  File "D:\CodeProjects\cfd\wing3d\tsd.py", line 335, in residual
+    Fx, A_f, _sub = self._xflux(phi, dx)
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "D:\CodeProjects\cfd\wing3d\tsd.py", line 276, in _xflux
+    1.0 + (phi[1:-1, :, :] - phi[:-2, :, :]) /
+           ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 4.94 MiB for an array with shape (158, 64, 64) and data type float64

@@ -51,14 +51,26 @@ def main():
     t0 = time.time()
     base, _r, _m = build_case(0.3, 1.25, False, True, None, nx, ny, nz,
                               1.6, section=sec)
+    out = 'tests3d/tsd_conv2_%s_M%.3f%s.json' % (geo, M, label)
+
+    def checkpoint(ep_done, cl_now, nsup):
+        # per-epoch checkpoint: a memory kill must not wipe the run
+        json.dump({'geo': geo, 'M': M, 'grid': [nx, ny, nz], 'epochs': ep,
+                   'epochs_done': ep_done + 1, 'CL': cl_now,
+                   'campaign_CL': ref,
+                   'delta_pct': (cl_now - ref) / ref * 100 if ref else
+                   float('nan'),
+                   'secs': time.time() - t0, 'complete': False},
+                  open(out, 'w'), indent=1)
+
     L, xc, ix, j0 = run_sup(M, span=1.6, epochs=ep, free_k=False,
-                            profile=prof, section=sec, base=base)
+                            profile=prof, section=sec, base=base,
+                            callback=checkpoint)
     cl = float(L['CL'])
     d = (cl - ref) / ref * 100 if ref else float('nan')
     rec = {'geo': geo, 'M': M, 'grid': [nx, ny, nz], 'epochs': ep,
-           'CL': cl, 'campaign_CL': ref, 'delta_pct': d,
-           'secs': time.time() - t0}
-    out = 'tests3d/tsd_conv2_%s_M%.3f%s.json' % (geo, M, label)
+           'epochs_done': ep, 'CL': cl, 'campaign_CL': ref,
+           'delta_pct': d, 'secs': time.time() - t0, 'complete': True}
     json.dump(rec, open(out, 'w'), indent=1)
     print('RESULT g%dx%dx%d ep%d %s M=%.3f CL=%.5f d=%+.2f%% (%.0fs) -> %s'
           % (nx, ny, nz, ep, geo, M, cl, d, rec['secs'], out), flush=True)
