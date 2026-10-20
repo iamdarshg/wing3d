@@ -255,8 +255,10 @@ g120 family.
 anchor (0.25906) and the g160 anchor (0.20561), so far consistent with a
 monotone grid trend rather than a branch jump. The g160 run was still
 falling at ep2 (0.2388), so the early g140 plateau is not yet decisive;
-the run continues to ep16 (projected ~00:32–01:15 Oct 21) and is
-checkpointed per epoch.
+`nsup` at ep1 is 337 (g120) / 1026 (g140) / 593 (g160) — the supersonic
+mask develops non-monotonically with grid, so the early CL ordering is not
+yet a converged trend. The run continues to ep16 (projected ~00:32–01:15
+Oct 21) and is checkpointed per epoch.
 
 **Second-stage confirmations (g120 + ep16, `tests3d/tsd_conv2.py`):**
 
