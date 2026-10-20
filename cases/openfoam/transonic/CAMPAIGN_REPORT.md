@@ -277,7 +277,10 @@ python tests3d/cli_battery.py --jobs 3
   naca M1.05 confirms the shift persists at the top of the band
   (+12.89%, flat from ep5). The dfvlr g160ep16 run landed at −9.95% vs
   campaign (0.45354) but was still −1.0% in its last epoch, and the rae
-  g160 run falls monotonically through ep11 (0.2091, nsup climbing) — at
+  g160 run falls monotonically through ep12 (0.2076, nsup climbing; the
+  first attempt died at ep12 from host memory exhaustion — 0.37 GB free,
+  traceback in `tests3d/tsd_conv2_rae2822_M0.85_g160_ep12_memkill.err` —
+  and was rerun with per-epoch checkpointing) — at
   160×64×64 the shock-heavy cambered cases are not iteration-converged at
   16 epochs, so the grid answer for rae remains the settled g120 family
   and the dfvlr TSD value carries a ±10% grid/iteration band. Campaign

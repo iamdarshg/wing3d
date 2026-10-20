@@ -9,7 +9,8 @@ fills, CLI battery (12/12), Probe A, the grid/epoch study, the full
 g120ep16 confirmation set (rae +4.0%, naca +12.5%, biconvex +12.8%, naca
 M0.95 +6.7%, naca M1.05 +12.9%, dfvlr −18.2% drifting) and the dfvlr
 g160ep16 run (−9.95%, still −1.0% in its last epoch) are complete and
-folded in below; rae g160ep16 is running (ep11, still falling). Host lanes
+folded in below; rae g160ep16 is rerunning (first attempt OOM-killed at
+ep12, 0.2076; per-epoch checkpoints added). Host lanes
 were terminated by a machine restart at 2026-10-19 21:19 (no campaign data
 lost); restarted 2026-10-20 13:48 under a 2-lane cap. L5: the first probe pair reproduced the corpus ceiling values
 bit-exactly on the same (refined) mesh — a determinism check, not a mesh
@@ -243,7 +244,7 @@ family (≈ +4%, below) and a g160 ep16 run followed (launched 2026-10-20
 | dfvlr_r4 M0.85 | 0.50364 | **0.41187** | **−18.22%** | **−11.78%** | done — NOT settled (0.5188→0.4119; −1.3/−1.6/+0.4% at ep12–15) |
 | naca0012 M1.05 | 0.05220 | **0.05892** | **+12.89%** | — | done — flat 0.0589 from ep5 (nsup ~271k) |
 | dfvlr_r4 M0.85 g160ep16 | 0.50364 | **0.45354** | **−9.95%** | — | done — 0.4875→0.4535; still −1.0% in the last epoch (NOT settled) |
-| rae2822 M0.85 g160ep16 | — | running | | | ep11 0.2091, still falling monotonically |
+| rae2822 M0.85 g160ep16 | — | running | | | ep12 0.2076, still falling; first attempt OOM-killed at ep12 → rerun w/ checkpoints 18:51 |
 
 Consequences: campaign TSD values are not grid-converged (as-run caveat,
 `CAMPAIGN_REPORT.md` §9). Corrected M0.85 pairings:
@@ -342,7 +343,8 @@ mesh; ~4–6 h) is unstaged.
    (rae +4.01%, naca +12.49%, biconvex +12.81%, naca M0.95 +6.71%, naca
    M1.05 +12.89%, dfvlr −18.22% still drifting). Host lanes were
    terminated by the 2026-10-19 21:19 machine restart; restarted 2026-10-20
-   13:48 under a 2-lane cap — dfvlr g160ep16 + rae g160ep16 running.
+   13:48 under a 2-lane cap — dfvlr g160ep16 done (−9.95%, not settled);
+   rae g160ep16 rerunning after a host-OOM kill at ep12 (checkpointed).
 4. Seam verdict from fills — **done, closed** (§3): mesh heterogeneity
    ≤ ~1%.
 5. L5 ceiling probes — **done** (§5). Attempt 1 (86k re-run) disproved the
