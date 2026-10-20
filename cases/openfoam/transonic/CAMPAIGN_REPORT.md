@@ -275,8 +275,14 @@ python tests3d/cli_battery.py --jobs 3
   reconfirmations landed within 0.7% of the study (naca +12.49%, rae
   +4.01%, biconvex +12.81%, dfvlr −18.22% still drifting vs campaign);
   naca M1.05 confirms the shift persists at the top of the band
-  (+12.89%, flat from ep5). Campaign TSD values are therefore not
-  grid-converged; §6 stands as the as-run campaign record.
+  (+12.89%, flat from ep5). The dfvlr g160ep16 run landed at −9.95% vs
+  campaign (0.45354) but was still −1.0% in its last epoch, and the rae
+  g160 run falls monotonically through ep11 (0.2091, nsup climbing) — at
+  160×64×64 the shock-heavy cambered cases are not iteration-converged at
+  16 epochs, so the grid answer for rae remains the settled g120 family
+  and the dfvlr TSD value carries a ±10% grid/iteration band. Campaign
+  TSD values are therefore not grid-converged; §6 stands as the as-run
+  campaign record.
 - TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
   ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr
   error cells carry that much extra reporting noise.
