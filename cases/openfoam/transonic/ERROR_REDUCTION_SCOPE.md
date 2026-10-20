@@ -113,7 +113,7 @@ a **wall-at-tip cascade**, while the TSD campaign runs **free-tip AR1.6**.
 | naca0012 | 0.0728 | 0.0506 | **+43.9%** |
 | biconvex | 0.0729 | 0.0484 | **+50.6%** |
 | rae2822 | 0.2510 | 0.2491 | +0.8% |
-| dfvlr_r4 | 0.2674 | 0.5036 | −46.9% (saturation, see L2/L5) |
+| dfvlr_r4 | 0.2674 | 0.5036 | −46.9% (as-run; L5: mesh-sensitive, §5) |
 
 Symmetric sections carry nearly all of their tip sensitivity (free AR1.6 to
 wall-at-tip), cambered sections with strong shocks much less — the symmetric

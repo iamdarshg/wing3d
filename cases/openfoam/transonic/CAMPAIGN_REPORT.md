@@ -195,7 +195,10 @@ saturating at ~0.279 around M0.9–0.925. TSD: 0.2491 → 0.5036 (+102%). The OF
 solution family behaves as if circulation saturates under the stronger shock
 system; the TSD keeps the response near-imprint. This is the single largest
 divergence in the table (+88% at M0.85, growing to +276% at M1.05 as the OF
-lift collapses).
+lift collapses). Caveat (L5, §9): the dfvlr anchors are strongly
+mesh-sensitive — the coarse 45.6k mesh gives +30.5%/+19.0% CL at
+M0.925/1.000 vs the refined 86k anchors — so "saturation" describes the
+as-run refined-mesh family, not a mesh-converged limit.
 
 **High-M behavior.** OF collapses through M1.0–1.05 for the cambered shapes
 (rae 0.1886 → 0.1073; dfvlr → 0.1334) while symmetric sections soften
