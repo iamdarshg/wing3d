@@ -4,15 +4,14 @@ Internal analysis: where the next few percent of error can come from, ranked
 by evidence and cost. Companion to `CAMPAIGN_REPORT.md`; table mechanics live
 in `campaign/final_table.*` + `tests3d/{final_table,gen_report_section}.py`.
 
-Status (2026-10-20 ~17:55 host): **52/52 pairs, 10/52 within 10% as-run** —
-fills, CLI battery (12/12), Probe A, the grid/epoch study, the full
-g120ep16 confirmation set (rae +4.0%, naca +12.5%, biconvex +12.8%, naca
-M0.95 +6.7%, naca M1.05 +12.9%, dfvlr −18.2% drifting) and the dfvlr
-g160ep16 run (−9.95%, still −1.0% in its last epoch) are complete and
-folded in below; rae g160ep16 is rerunning (first attempt OOM-killed at
-ep12, 0.2076; per-epoch checkpoints added). Host lanes
-were terminated by a machine restart at 2026-10-19 21:19 (no campaign data
-lost); restarted 2026-10-20 13:48 under a 2-lane cap. L5: the first probe pair reproduced the corpus ceiling values
+Status (2026-10-20 ~22:15 host): **52/52 pairs, 10/52 within 10% as-run** —
+fills, CLI battery (12/12), Probe A, the grid/epoch study, the g120ep16
+confirmation set (rae +4.0%, naca +12.5%, biconvex +12.8%, naca M0.95
++6.7%, naca M1.05 +12.9%, dfvlr −18.2% drifting) and both g160ep16 runs
+(dfvlr −9.95%, still −1.0% in its last epoch; rae −17.45%, settled at
+0.2054–0.2056) are complete and folded in below. No lanes running. Host
+lanes were terminated by a machine restart at 2026-10-19 21:19 (no
+campaign data lost); restarted 2026-10-20 13:48 under a 2-lane cap. L5: the first probe pair reproduced the corpus ceiling values
 bit-exactly on the same (refined) mesh — a determinism check, not a mesh
 test — and the preserved coarse mesh's checkMesh failure is now
 **root-caused**: the `constant` points file carries 49 stray points
@@ -35,7 +34,7 @@ rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
 |---|-------|----------------|-------------------|------|----------|
 | L1 | **Config pairing**: OF is wall-at-tip, TSD is free-tip | naca/biconvex −20…−40%; rae S-shape | Probe A **done**: OF free-tip (naca M0.85) = 0.0629 vs wall 0.0728 → wall inflates +15.8%; free-vs-free residual +24.2% at campaign grid, **+10.4% at g120ep16** | done (5.3 h) | ≈16 pp of the +44% naca gap is config; free-vs-free ≈ +10.4% once grid-converged |
 | L2 | **Corpus mesh seams** (mixed resolutions per row) | rae (48k vs 54k); dfvlr (45.6k vs 86k) | fills landed: dfvlr CL deltas across the seams run +1.3/+2.1/+2.3% — smooth through both transitions (§3) | done | **≤ ~1%; closed as immaterial** |
-| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + g120ep16 confirmations **done** (5 geos, 6 cells): rae +4.0% (stable), naca +12.5%, biconvex +12.8%, naca M0.95 +6.7%, naca M1.05 +12.9%, dfvlr −18.2% g120ep16 (was −7.3% at ep8 — the ep8 g120/g160 "agreement" was under-iteration), dfvlr g160ep16 −9.95% (still −1.0% in the last epoch); rae g160 "−13%" = same pattern; box inert ≤1.4% | rae g160ep16 running (ep11 0.2091, still falling) | **the largest single lever: −18…+13% CL, sign per geo** |
+| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + g120ep16 confirmations **done** (5 geos, 6 cells): rae +4.0% (stable), naca +12.5%, biconvex +12.8%, naca M0.95 +6.7%, naca M1.05 +12.9%, dfvlr −18.2% g120ep16 (was −7.3% at ep8 — the ep8 g120/g160 "agreement" was under-iteration), dfvlr g160ep16 −9.95% (still −1.0% in the last epoch), rae g160ep16 −17.45% (settled, 20.6% below g120 = shock branch); box inert ≤1.4% | no lanes running | **the largest single lever: −18…+13% CL, sign per geo** |
 | L4 | **TSD estimator + imprint resolution** | all; dfvlr wobble | ep16 at g80 moves toward the fine-grid answer (naca +4.2%, dfvlr −3.5%); drift evidence §1.3 | folded into L3 study | ≤ ~4%; subsumed by L3 |
 | L5 | **OF scheme/refinement at the ceiling** | dfvlr +62…+276%; rae M1.0+ | dfvlr peak 0.2791 @ M0.900; M0.925/M1.000 probe pair reproduced the corpus values **bit-exactly** → the corpus ceiling values are already refined-mesh (86k) runs (solver deterministic); the preserved 45.6k mesh's checkMesh failure is **root-caused** (constant points = 59,360 with 49 strays; real snapped 59,311 points in `0/polyMesh`) → lanes fixed + coarse pair **complete to t=0.25**: CL 0.3626993 / 0.2529717 vs refined 0.2779525 / 0.2126116 = **+30.5% / +19.0%** | done | **resolution matters** — dfvlr anchors are mesh-sensitive, not mesh-converged; scheme variant (L5-2) unstaged |
 | L6 | Mach-alignment accounting | all ±1.5 pp; dfvlr ±4.5 pp | aligned-M table (§1.2) | doc-only | not a fix; band note only |
@@ -244,7 +243,7 @@ family (≈ +4%, below) and a g160 ep16 run followed (launched 2026-10-20
 | dfvlr_r4 M0.85 | 0.50364 | **0.41187** | **−18.22%** | **−11.78%** | done — NOT settled (0.5188→0.4119; −1.3/−1.6/+0.4% at ep12–15) |
 | naca0012 M1.05 | 0.05220 | **0.05892** | **+12.89%** | — | done — flat 0.0589 from ep5 (nsup ~271k) |
 | dfvlr_r4 M0.85 g160ep16 | 0.50364 | **0.45354** | **−9.95%** | — | done — 0.4875→0.4535; still −1.0% in the last epoch (NOT settled) |
-| rae2822 M0.85 g160ep16 | — | running | | | ep12 0.2076, still falling; first attempt OOM-killed at ep12 → rerun w/ checkpoints 18:51 |
+| rae2822 M0.85 g160ep16 | 0.24907 | **0.20561** | **−17.45%** | — | done — settled 0.2054–0.2056 (ep14–15); 20.6% below g120 = different shock branch |
 
 Consequences: campaign TSD values are not grid-converged (as-run caveat,
 `CAMPAIGN_REPORT.md` §9). Corrected M0.85 pairings:
@@ -252,10 +251,12 @@ Consequences: campaign TSD values are not grid-converged (as-run caveat,
   −30.5% as-run wall-paired; from +43.9% free-vs-free) — just over the
   10% line after both levers.
 - **rae** (wall-paired all along): OF 0.2510 vs TSD 0.2591 → **+3.2%**
-  (as-run −0.8%; the g120 grid correction moves rae *up*). Caveat: the
-  g160 grid moves it the other way (ep12 0.2076, still falling), so rae's
-  grid-converged value is unresolved between ≈0.205 and ≈0.259 — the
-  +3.2% pairing is a g120 point, not a converged correction.
+  (as-run −0.8%; the g120 grid correction moves rae *up*). **But the g160
+  grid settles at 0.2056 (−17.5% vs campaign) — 20.6% below g120**, i.e.
+  a grid-selected shock branch, so the finest-grid rae pairing is
+  OF/TSD = **+22.1%**, not +3.2%. The rae +3.2% is a g120-grid result,
+  and the rae under-10% mid-band claim is a coarse-grid result: rae is
+  one of the cases where grid convergence changes the verdict.
 - **dfvlr**: 0.2674 vs 0.4535 (g160ep16, still −1.0% in its last epoch) →
   OF/TSD−1 = **−41.0%** (as-run −46.9%; the g120ep16 −35.1% was
   grid/iteration-under-converged, not convergence). The TSD value keeps
@@ -347,7 +348,8 @@ mesh; ~4–6 h) is unstaged.
    M1.05 +12.89%, dfvlr −18.22% still drifting). Host lanes were
    terminated by the 2026-10-19 21:19 machine restart; restarted 2026-10-20
    13:48 under a 2-lane cap — dfvlr g160ep16 done (−9.95%, not settled);
-   rae g160ep16 rerunning after a host-OOM kill at ep12 (checkpointed).
+   rae g160ep16 done (−17.45%, settled at 0.2054–0.2056, 20.6% below g120).
+   No lanes running.
 4. Seam verdict from fills — **done, closed** (§3): mesh heterogeneity
    ≤ ~1%.
 5. L5 ceiling probes — **done** (§5). Attempt 1 (86k re-run) disproved the

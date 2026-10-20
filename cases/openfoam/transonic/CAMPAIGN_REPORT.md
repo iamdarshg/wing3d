@@ -207,8 +207,9 @@ the high-M error is dominated by the OF collapse (rae +32% → +112% over
 M1.0 → 1.05) while the symmetric naca error improves toward the OF floor
 (−17% → −10%).
 
-**Overall.** The under-10% target is met for the rae mid-band (M0.75–0.975,
-nine stations of ten) and at the high-M end of the naca band (M1.05, −9.9%);
+**Overall.** The under-10% target is met as-run for the rae mid-band
+(M0.75–0.975, nine stations of ten; the finest rae grid settles −17.5%,
+§9) and at the high-M end of the naca band (M1.05, −9.9%);
 the symmetric sections otherwise sit −10…−40% below OF (tip-relief/configuration
 + dissipation) and the strong-camber dfvlr case overshoots by +62…+276% as
 the OF lift collapses under its shock system. These are reported honestly in
@@ -276,15 +277,16 @@ python tests3d/cli_battery.py --jobs 3
   +4.01%, biconvex +12.81%, dfvlr −18.22% still drifting vs campaign);
   naca M1.05 confirms the shift persists at the top of the band
   (+12.89%, flat from ep5). The dfvlr g160ep16 run landed at −9.95% vs
-  campaign (0.45354) but was still −1.0% in its last epoch, and the rae
-  g160 run falls monotonically through ep12 (0.2076, nsup climbing; the
-  first attempt died at ep12 from host memory exhaustion — 0.37 GB free,
-  traceback in `tests3d/tsd_conv2_rae2822_M0.85_g160_ep12_memkill.err` —
-  and was rerun with per-epoch checkpointing) — at
-  160×64×64 the shock-heavy cambered cases are not iteration-converged at
-  16 epochs, so the grid answer for rae remains the settled g120 family
-  and the dfvlr TSD value carries a ±10% grid/iteration band. Campaign
-  TSD values are therefore not grid-converged; §6 stands as the as-run
+  campaign (0.45354) but was still −1.0% in its last epoch; the rae g160
+  rerun settled at 0.2056 after 14–15 epochs (−17.5% vs campaign, 20.6%
+  below the g120ep16 value — a grid-selected shock branch; the first
+  attempt died at ep12 from host memory exhaustion, 0.37 GB free,
+  traceback in `tests3d/tsd_conv2_rae2822_M0.85_g160_ep12_memkill.err`,
+  and was rerun with per-epoch checkpointing). At 160×64×64 the
+  shock-heavy cambered cases need ~14–16 epochs and can settle on a
+  different branch; the rae +3.2% grid correction is a g120 result, and
+  the dfvlr TSD value carries a ±10% grid/iteration band. Campaign TSD
+  values are therefore not grid-converged; §6 stands as the as-run
   campaign record.
 - TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
   ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr
