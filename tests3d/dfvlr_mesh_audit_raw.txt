@@ -1,0 +1,213 @@
+﻿===== dfvlr_r4_M0.750_a1.25
+casemtime: 2026-10-15 22:34:00
+const_owner_mtime: 2026-10-15 17:29:39
+note        "nPoints:110001  nCells:86145  nFaces:281816  nInternalFaces:252127";
+nPoints:110001
+nCells:86145
+nFaces:281816
+const_owner_md5: 310c807b2b1381fc064bb1adbfbd523b
+const_boundary_note: 
+const_points: pts=110001 md5=e1fa0119701082004979a363708b6267 mtime=2026-10-15 17:29:39
+polyMesh_dirs: dfvlr_r4_M0.750_a1.25/constant/polyMesh 
+
+===== dfvlr_r4_M0.775_a1.25
+casemtime: 2026-10-16 00:08:02
+const_owner_mtime: 2026-10-15 22:38:45
+note        "nPoints:110001  nCells:86145  nFaces:281816  nInternalFaces:252127";
+nPoints:110001
+nCells:86145
+nFaces:281816
+const_owner_md5: 310c807b2b1381fc064bb1adbfbd523b
+const_boundary_note: 
+const_points: pts=110001 md5=e1fa0119701082004979a363708b6267 mtime=2026-10-15 22:38:45
+polyMesh_dirs: dfvlr_r4_M0.775_a1.25/constant/polyMesh 
+
+===== dfvlr_r4_M0.800_a1.25
+casemtime: 2026-10-17 23:53:10
+const_owner_mtime: 2026-10-17 16:45:09
+note        "nPoints:110001  nCells:86145  nFaces:281816  nInternalFaces:252127";
+nPoints:110001
+nCells:86145
+nFaces:281816
+const_owner_md5: 310c807b2b1381fc064bb1adbfbd523b
+const_boundary_note: 
+const_points: pts=110001 md5=e1fa0119701082004979a363708b6267 mtime=2026-10-17 16:45:09
+polyMesh_dirs: dfvlr_r4_M0.800_a1.25/constant/polyMesh 
+
+===== dfvlr_r4_M0.825_a1.25
+casemtime: 2026-10-17 23:55:31
+const_owner_mtime: 2026-10-17 16:45:09
+note        "nPoints:110001  nCells:86145  nFaces:281816  nInternalFaces:252127";
+nPoints:110001
+nCells:86145
+nFaces:281816
+const_owner_md5: 310c807b2b1381fc064bb1adbfbd523b
+const_boundary_note: 
+const_points: pts=110001 md5=e1fa0119701082004979a363708b6267 mtime=2026-10-17 16:45:09
+polyMesh_dirs: dfvlr_r4_M0.825_a1.25/constant/polyMesh 
+
+===== dfvlr_r4_M0.850_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:11
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:11
+polyMesh_dirs: dfvlr_r4_M0.850_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M0.875_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:14
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:14
+polyMesh_dirs: dfvlr_r4_M0.875_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M0.900_a1.25
+casemtime: 2026-10-18 00:03:10
+const_owner_mtime: 2026-10-17 16:45:08
+note        "nPoints:110001  nCells:86145  nFaces:281816  nInternalFaces:252127";
+nPoints:110001
+nCells:86145
+nFaces:281816
+const_owner_md5: 310c807b2b1381fc064bb1adbfbd523b
+const_boundary_note: 
+const_points: pts=110001 md5=e1fa0119701082004979a363708b6267 mtime=2026-10-17 16:45:08
+polyMesh_dirs: dfvlr_r4_M0.900_a1.25/constant/polyMesh 
+log: log.check: cells:            45606
+
+===== dfvlr_r4_M0.925_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:15
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:15
+polyMesh_dirs: dfvlr_r4_M0.925_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M0.950_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:16
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:16
+polyMesh_dirs: dfvlr_r4_M0.950_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M0.975_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:16
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:16
+polyMesh_dirs: dfvlr_r4_M0.975_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M1.000_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:17
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:17
+polyMesh_dirs: dfvlr_r4_M1.000_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M1.025_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:18
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:18
+polyMesh_dirs: dfvlr_r4_M1.025_a1.25/constant/polyMesh 
+
+===== dfvlr_r4_M1.050_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:43:18
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:43:18
+polyMesh_dirs: dfvlr_r4_M1.050_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M1.075_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:50:04
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:50:04
+polyMesh_dirs: dfvlr_r4_M1.075_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== dfvlr_r4_M1.100_a1.25
+casemtime: 2026-10-15 16:45:50
+const_owner_mtime: 2026-10-15 16:50:07
+note        "nPoints:59311  nCells:45606  nFaces:150169  nInternalFaces:129548";
+nPoints:59311
+nCells:45606
+nFaces:150169
+const_owner_md5: 1c2d9eda213d65fa96c428fab1d5d796
+const_boundary_note: 
+const_points: pts=59360 md5=b7adaff7e649fbd5951936cf0bd0dd27 mtime=2026-10-15 16:50:07
+polyMesh_dirs: dfvlr_r4_M1.100_a1.25/constant/polyMesh 
+log: log.check: cells:            21000
+
+===== meshCache references
+/meshCache/biconvex.old/
+/meshCache/biconvex/
+/meshCache/dfvlr_r4.old/
+/meshCache/dfvlr_r4.stale45606/
+/meshCache/dfvlr_r4/
+/meshCache/naca0012/
+/meshCache/rae2822.old/
+/meshCache/rae2822/
+/meshCache/biconvex.old/ points md5=17846886fecd0c09d96f84ecaf3069d3 pts=70559
+/meshCache/biconvex/ points md5=17846886fecd0c09d96f84ecaf3069d3 pts=70559
+/meshCache/dfvlr_r4.old/ points md5=b7adaff7e649fbd5951936cf0bd0dd27 pts=59360
+/meshCache/dfvlr_r4.stale45606/ points md5=b7adaff7e649fbd5951936cf0bd0dd27 pts=59360
+/meshCache/dfvlr_r4/ points md5=e1fa0119701082004979a363708b6267 pts=110001
+/meshCache/naca0012/ points md5=8e40632b5628a5103b330542ddf53c3b pts=64506
+/meshCache/rae2822.old/ points md5=039b55960ea27ce4589e692845e87815 pts=62660
+/meshCache/rae2822/ points md5=039b55960ea27ce4589e692845e87815 pts=62660
+===== dfvlr_coarse (if present)
+/dfvlr_coarse
+/dfvlr_coarse/constant/polyMesh/points md5=b7adaff7e649fbd5951936cf0bd0dd27 pts=59360
+/dfvlr_coarse/0/polyMesh/points md5=ad7b845b4ae4da6e3cce44f936379a3a pts=59311
+AUDIT_DONE
+

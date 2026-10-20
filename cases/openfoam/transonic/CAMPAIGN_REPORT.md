@@ -1,6 +1,6 @@
 # Transonic Wing Campaign — `wing3d` TSD vs OpenFOAM Euler (band M0.75–1.05)
 
-**Date:** 2026-10-16 · **Angle of attack:** 1.25° · **Span:** 1.6 chords (AR1.6)
+**Date:** 2026-10-16 (updated 2026-10-20) · **Angle of attack:** 1.25° · **Span:** 1.6 chords (AR1.6)
 **Reference:** OpenFOAM v2406 `rhoCentralFoam`, Euler, LTS · **Tool:** `wing3d` full-3D TSD (source of truth)
 **Matrix:** 4 geometries × 13 Mach (0.75 → 1.05 by 0.025) = **52 case pairs**
 
@@ -101,13 +101,14 @@ All three geometry sources were reconciled with `tests3d/diag_geo_def.py`
 
 - 3D full-potential TSD on an 80×32×32 box, α=1.25°, **free-tip wing span
   1.6** (AR1.6), entropy-corrected, Kelvin…-masked supersonic regions,
-  Newton–Krylov epochs (8, converged to <1% CL change).
+  Newton–Krylov epochs (8 per campaign point; the later g120/g160 + ep16
+  study shows these are not converged — §9).
 - Lift coupling: **fixed k=1 camber-carrying imprint** from a doublet-lattice
   panel solve of the exact section loop (24 chord × 12 span). The free-k
   Kutta closure was diagnosed non-viable (`tests3d` kscan/kroot diagnostics:
   no unique root, spurious low-circulation solution at k≈0.494 that halves
   CL, tangency residual grows with k) — frozen at k≡1, the value that
-  reproduces the OpenFOAM rae anchor to −0.6%.
+  reproduces the OpenFOAM rae anchor to −0.8% (0.24907 vs 0.25099).
 - Panel/imprint is Mach-independent; the case is built once per geometry and
   the Mach number is refreshed per sweep point (validated: relaunched runs
   reproduce the killed runs' epoch sequences).
@@ -147,33 +148,36 @@ table is regenerated mechanically from the delivered corpus
 `tests3d/gen_report_section.py`); the full 52-row raw table lives in
 `campaign/final_table.md`.
 
-**Within 10% (converged rows).** 10/52 overall —
-- rae2822: **9/13** (M0.75–0.975 except M0.925 at −10.3%; mean 20.2% pulled up by the high-M blowups)
+**Within 10% (as-run campaign grid; not grid-converged).** 10/52 overall on the campaign 80×32×32 / 8-epoch TSD grid —
+- rae2822: **9/13 as-run** (M0.75–0.975 except M0.925 at −10.3%; mean 20.2% pulled up by the high-M blowups; the g160ep16 rerun settles at 0.20561, −17.5% vs campaign / 20.6% below g120 — §9)
 - naca0012: 1/13 (M1.05 at −9.9%; mean 25.2%)
 - biconvex: 0/13 (best −12.6% at M1.05; mean 24.4%)
 - dfvlr_r4: 0/13 (mean 113.3%)
 
 Reading notes: error = (CL_TSD − CL_OF)/CL_OF × 100 at each (geometry, Mach);
-computed cells use converged OF values (t=0.25) and converged TSD epochs;
-a bracketed value would mark a still-settling OF row (none in this
-snapshot). Sign convention: negative = TSD below OF.
+computed cells use the delivered OF final values (t=0.25; dfvlr M0.95 is
+the exception at t=0.2014) and the as-run TSD 8-epoch values (not
+grid/epoch-converged; §9). A bracketed value would mark a still-settling
+OF row. Sign convention: negative = TSD below OF.
 
 ## 7. Discussion
 
 **The rae variant matches across the mid-band.** At M0.85 the campaign
 gives TSD 0.2491 vs OF 0.2510 (−0.8%); the extracted-STL CLI reproduces it
-independently (0.2492, +0.04%). Across M0.75–0.975 the rae errors stay
-within ±10% at nine of the ten subsonic stations (five within ±5%; the
-tenth, M0.925, lands at −10.3% just outside), crossing zero at M0.85 — the
-fixed-imprint TSD is quantitatively calibrated for the moderate aft-loaded
-section through the mid-band.
+independently (0.2492, +0.04%). On the campaign 80×32×32 grid, across
+M0.75–0.975 the rae errors stay within ±10% at nine of the ten subsonic
+stations (five within ±5%; the tenth, M0.925, lands at −10.3% just
+outside), crossing zero at M0.85. Caveat: the g160ep16 rerun settles at
+CL 0.20561 (−17.45% vs campaign, 20.6% below the g120ep16 value; §9), so
+the mid-band calibration is an as-run/coarse-grid result, not a
+grid-converged one.
 
 **OpenFOAM shows a configuration-level plateau; TSD separates the
 geometries.** At M0.85, OF gives naca 0.0728, biconvex 0.0729, rae 0.2510,
 dfvlr 0.2674 — the two cambered sections move together (6% apart for 65%
 more camber) and the two symmetric sections are identical to 3 digits. The
 cambered peak reads 0.2778 (rae, M0.925) / 0.2791 (dfvlr, M0.900 — new 86k
-fill). TSD instead scales
+fill; reconstructed coarse 45.6k probe gives 0.3627 @ M0.925). TSD instead scales
 physically with camber: naca 0.0506, biconvex 0.0484, rae 0.2491, dfvlr
 0.5036 (panel imprint: 0.0541 / — / 0.3352 / 0.6260).
 
@@ -184,8 +188,9 @@ between the free AR1.6 (0.0506) and AR6 (0.1101) values (≈ free AR2.2 by
 interpolation). A direct control settles it: the same case with the tips
 freed (y-faces folded into the farfield,
 `campaign_freetip/naca0012_M0.850_a1.25`) converges to CL=0.0629 — the
-wall-confined slab inflates the symmetric section by ~16%, so just under
-half of the +44% naca gap is configuration and the rest is free-vs-free
+wall-confined slab inflates the symmetric section by ~16%, accounting
+for ≈45% of the absolute CL gap (≈16 pp of the +44% relative gap); the
+rest is free-vs-free
 numerical/imprint difference, which the grid-refinement study narrows
 further (`ERROR_REDUCTION_SCOPE.md` §§2, 4).
 
@@ -196,13 +201,13 @@ solution family behaves as if circulation saturates under the stronger shock
 system; the TSD keeps the response near-imprint. This is the single largest
 divergence in the table (+88% at M0.85, growing to +276% at M1.05 as the OF
 lift collapses). Caveat (L5, §9): the dfvlr anchors are strongly
-mesh-sensitive — the coarse 45.6k mesh gives +30.5%/+19.0% CL at
-M0.925/1.000 vs the refined 86k anchors — so "saturation" describes the
-as-run refined-mesh family, not a mesh-converged limit.
+mesh-sensitive — a reconstructed coarse 45.6k probe gives +30.5%/+19.0%
+CL at M0.925/1.000 vs the refined 86k anchors — so "saturation" describes
+the as-run refined-mesh family, not a mesh-converged limit.
 
 **High-M behavior.** OF collapses through M1.0–1.05 for the cambered shapes
 (rae 0.1886 → 0.1073; dfvlr → 0.1334) while symmetric sections soften
-(0.0628 → 0.0579 naca). TSD declines only mildly (rae 0.2467 → 0.2273), so
+(0.0628 → 0.0579 naca). TSD declines only mildly (rae 0.2489 → 0.2273), so
 the high-M error is dominated by the OF collapse (rae +32% → +112% over
 M1.0 → 1.05) while the symmetric naca error improves toward the OF floor
 (−17% → −10%).
@@ -247,38 +252,44 @@ python tests3d/cli_battery.py --jobs 3
   (same geometry in both solvers).
 - Low-M cells are filled by re-runs of the same numerical settings; the
   original corpus itself reproduced to 4 digits where re-run.
-- Mesh resolution varies within two rows (per-case polyMesh notes, see
-  `ERROR_REDUCTION_SCOPE.md` §3): rae2822 M0.75–0.85 and 0.90 ran on
-  48,114-cell meshes while 0.875 and 0.925–1.10 ran on 53,946; dfvlr_r4
-  M0.75–0.825 and 0.90 ran on 86,145 cells while 0.85/0.875/0.925–1.10 ran
-  on 45,606 (naca/biconvex uniform). Cross-row comparisons inherit this
-  heterogeneity; the seam check on the completed dfvlr curve came back
-  ≤ ~1% of trend (`ERROR_REDUCTION_SCOPE.md` §3) — closed as immaterial.
-- L5 mesh-side caution (dfvlr 45.6k rows): the preserved coarse meshes
-  fail checkMesh due to a points/topology mismatch, not geometry —
-  `constant/polyMesh/points` holds 59,360 points (59,311 good + 49
-  strays); the correctly snapped points live in `0/polyMesh/points`.
+- Mesh resolution varies within one row only: rae2822 M0.75–0.85 and 0.90
+  ran on 48,114-cell meshes while 0.875 and 0.925–1.05 ran on 53,946;
+  naca/biconvex and dfvlr_r4 are uniform (dfvlr 86,145 cells at every M;
+  the 45,606-cell meshes now in the 0.85/0.875/0.925–1.05 case
+  directories are failed-retry debris that produced no forces — no
+  delivered value came from them; `ERROR_REDUCTION_SCOPE.md` §3,
+  `tests3d/dfvlr_mesh_audit.md`). The dfvlr seam check is therefore
+  vacuous; cross-row comparisons inherit only rae's real (smooth) seams.
+- L5 mesh probe (reconstructed 45.6k, not a corpus mesh): a preserved
+  45.6k copy (`/dfvlr_coarse`) failed checkMesh due to a points/topology
+  mismatch — `constant/polyMesh/points` holds 59,360 points (59,311 good
+  + 49 strays); the good points were in that scratch case's
+  `0/polyMesh/points` (no campaign case has a time-dir polyMesh).
   Topology + good points reassembled (`tmp_lane_fix.sh`) → lanes verify
   "Mesh OK" → the coarse pair **completed** at t=0.25: CL = 0.3626993
   (M0.925) / 0.2529717 (M1.000) vs refined 0.2779525 / 0.2126116 →
   **+30.5% / +19.0%** → **resolution matters** (verdict rule: <1% →
   saturation genuine; ≥3% → resolution program;
-  `ERROR_REDUCTION_SCOPE.md` §5). Related L5 result: a refined-mesh
-  re-run of dfvlr M0.925/M1.000 reproduced the corpus `.coeff` values
-  **bit-exactly** (all 12 columns) — rhoCentralFoam is run-to-run
-  bit-reproducible here, the corpus ceiling values are refined-mesh (86k)
-  runs, and those anchors are strongly mesh-sensitive (not mesh-converged).
+  `ERROR_REDUCTION_SCOPE.md` §5). The corpus never used this mesh — all
+  delivered dfvlr values are 86k. Related determinism result: a
+  refined-mesh re-run of dfvlr M0.925/M1.000 reproduced the corpus
+  `.coeff` values **bit-exactly** (all 12 columns) — rhoCentralFoam is
+  run-to-run bit-reproducible here, and those refined anchors are strongly
+  mesh-sensitive (not mesh-converged).
 - The TSD side of §6 uses the campaign grid (80×32×32, 8 epochs). The
   M0.85 refinement study (`tests3d/tsd_convergence.json`, see
   `ERROR_REDUCTION_SCOPE.md` §4) shows finer grids move TSD CL by up to
-  +13% (naca), −9% (dfvlr), ≈+4% (rae; its −13% g160 point was still
-  falling at ep8 — under-iteration, not grid). The g120+ep16
-  reconfirmations landed within 0.7% of the study (naca +12.49%, rae
-  +4.01%, biconvex +12.81%, dfvlr −18.22% still drifting vs campaign);
-  naca M1.05 confirms the shift persists at the top of the band
-  (+12.89%, flat from ep5). The dfvlr g160ep16 run landed at −9.95% vs
-  campaign (0.45354) but was still −1.0% in its last epoch; the rae g160
-  rerun settled at 0.2056 after 14–15 epochs (−17.5% vs campaign, 20.6%
+  +13% (naca), −9% (dfvlr), and +4% at g120 for rae; rae's −13% g160ep8
+  point was under-iterated, and its ep16 rerun settled even lower at
+  0.20561 (−17.45% vs campaign) — a grid-dependent state, not just
+  under-iteration. The g120+ep16 reconfirmations reproduce the g120ep8
+  study within 0.7% for naca/rae (+12.49%, +4.01%); biconvex has no
+  g120ep8 comparison (+12.81%); dfvlr dropped a further −11.78% at ep16
+  (−18.22% vs campaign, still drifting). naca M1.05 confirms the shift
+  persists at the top of the band (+12.89%, flat from ep5). The dfvlr
+  g160ep16 run landed at −9.95% vs campaign (0.45354) but was still −1.0%
+  in its last epoch; the rae g160 rerun settled by ep14–15 (run completed
+  16 epochs) at 0.2056 (−17.5% vs campaign, 20.6%
   below the g120ep16 value — a grid-dependent shock state, branch vs
   fine-grid artifact unresolved; the first
   attempt died at ep12 from host memory exhaustion, 0.37 GB free,
