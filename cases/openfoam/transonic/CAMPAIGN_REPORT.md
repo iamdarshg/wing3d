@@ -281,25 +281,29 @@ python tests3d/cli_battery.py --jobs 3
   `ERROR_REDUCTION_SCOPE.md` §4) shows finer grids move TSD CL by up to
   +13% (naca), −9% (dfvlr), and +4% at g120 for rae; rae's −13% g160ep8
   point was under-iterated, and its ep16 rerun settled even lower at
-  0.20561 (−17.45% vs campaign) — a grid-dependent state, not just
-  under-iteration. The g120+ep16 reconfirmations reproduce the g120ep8
-  study within 0.7% for naca/rae (+12.49%, +4.01%); biconvex has no
-  g120ep8 comparison (+12.81%); dfvlr dropped a further −11.78% at ep16
-  (−18.22% vs campaign, still drifting). naca M1.05 confirms the shift
-  persists at the top of the band (+12.89%, flat from ep5). The dfvlr
-  g160ep16 run landed at −9.95% vs campaign (0.45354) but was still −1.0%
-  in its last epoch; the rae g160 rerun settled by ep14–15 (run completed
-  16 epochs) at 0.2056 (−17.5% vs campaign, 20.6%
-  below the g120ep16 value — a grid-dependent shock state, branch vs
-  fine-grid artifact unresolved; the first
-  attempt died at ep12 from host memory exhaustion, 0.37 GB free,
-  traceback in `tests3d/tsd_conv2_rae2822_M0.85_g160_ep12_memkill.err`,
-  and was rerun with per-epoch checkpointing). At 160×64×64 the
-  shock-heavy cambered cases need ~14–16 epochs and can settle on a
-  different branch; the rae +3.2% grid correction is a g120 result, and
-  the dfvlr TSD value carries a ±10% grid/iteration band. Campaign TSD
-  values are therefore not grid-converged; §6 stands as the as-run
-  campaign record.
+  0.20561 (−17.45% vs campaign). The g120+ep16 reconfirmations reproduce
+  the g120ep8 study within 0.7% for naca/rae (+12.49%, +4.01%); biconvex
+  has no g120ep8 comparison (+12.81%); dfvlr dropped a further −11.78% at
+  ep16 (−18.22% vs campaign, still drifting). naca M1.05 confirms the
+  shift persists at the top of the band (+12.89%, flat from ep5). The
+  dfvlr g160ep16 run landed at −9.95% vs campaign (0.45354) but was still
+  −1.0% in its last epoch; the rae g160 rerun settled by ep14–15 (run
+  completed 16 epochs) at 0.2056 (−17.5% vs campaign, 20.6% below the
+  g120ep16 value; the first attempt died at ep12 from host memory
+  exhaustion, 0.37 GB free, traceback in
+  `tests3d/tsd_conv2_rae2822_M0.85_g160_ep12_memkill.err`, and was rerun
+  with per-epoch checkpointing). The rae g140 discriminator (140×56×56,
+  ep16, complete 2026-10-21) then landed at **0.19683 (−20.97%)** —
+  *below* both g120 and g160, so the three-grid sequence 0.2591 → 0.1968
+  → 0.2056 is non-monotone: rae's grid dependence is a **supersonic-mask
+  state selection** (each epoch freezes the mask from the current
+  solution; g120 locks into a small-mask state, g140/g160 drift into a
+  large-mask state), not a grid-convergence trend
+  (`ERROR_REDUCTION_SCOPE.md` §4). At 160×64×64 the shock-heavy cambered
+  cases need ~14–16 epochs and can settle on a different mask state; the
+  rae +3.2% grid correction is a g120/small-mask result, and the dfvlr
+  TSD value carries a ±10% grid/iteration band. Campaign TSD values are
+  therefore not grid-converged; §6 stands as the as-run campaign record.
 - TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
   ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr
   error cells carry that much extra reporting noise.
