@@ -7,8 +7,9 @@ Usage: python tsd_conv2.py <geo> <M>                   (g120 ep16)
        python tsd_conv2.py <geo> <M> <nx> <ny> <nz> [ep]
                                                        (custom grid/epochs;
                                                         e.g. rae g160 ep16)
-Writes tests3d/tsd_conv2_<geo>_M<M>.json (custom grids get a _g<grid> tag;
-default-grid runs keep the plain name).
+Writes tests3d/tsd_conv2_<geo>_M<M>.json (explicit-grid runs always get a
+_g<grid> tag; bare runs keep the plain name — a repeat of the default grid
+must not silently overwrite the canonical result file).
 """
 import json
 import os
@@ -42,7 +43,9 @@ def main():
         nx, ny, nz = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
     if len(sys.argv) >= 7:
         ep = int(sys.argv[6])
-    label = '' if (nx, ny, nz) == (NX, NY, NZ) else '_g%dx%dx%d' % (nx, ny, nz)
+    # explicit grid args always tag the file, even when they equal the
+    # default: a repeat g120 run must not overwrite the canonical result
+    label = ('_g%dx%dx%d' % (nx, ny, nz)) if len(sys.argv) >= 6 else ''
     prof = build_profile(geo)
     sec = build_section(geo)
     ref = campaign_cl(geo, M)
