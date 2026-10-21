@@ -3,7 +3,8 @@
 #
 # L5 established that the delivered dfvlr anchors (uniform 86k mesh) are
 # mesh-sensitive: a reconstructed 45.6k probe gives +30.5%/+19.0% CL at
-# M0.925/M1.000. This program builds a FINER mesh (~250-450k cells) from
+# M0.925/M1.000. This program builds a FINER mesh (measured 125,008
+# cells = 1.45x the campaign mesh) from
 # the M0.900 template and re-runs the WHOLE dfvlr band M0.850-1.050
 # (9 points: the campaign regime that has delivered 86k anchors) to
 # t=0.25, to test whether the 86k anchors are mesh-converged and to
@@ -57,7 +58,7 @@ snappyHexMesh -overwrite > log.snappy 2>&1
 checkMesh > log.check 2>&1
 CELLS=$(grep -a -m1 'cells:' log.check | grep -ao '[0-9]\+' | head -1)
 echo "FINE MESH cells: $CELLS  (86k reference)"
-if [ -z "$CELLS" ] || [ "$CELLS" -lt 150000 ] || [ "$CELLS" -gt 700000 ]; then
+if [ -z "$CELLS" ] || [ "$CELLS" -lt 100000 ] || [ "$CELLS" -gt 700000 ]; then
   echo "cell count out of band ($CELLS) - aborting"; exit 2
 fi
 

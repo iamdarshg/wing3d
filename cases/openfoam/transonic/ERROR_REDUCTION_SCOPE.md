@@ -454,11 +454,17 @@ remains unstaged.
    the two ceiling points to the full band **M0.850–1.050 — 9 solves**,
    each vs its delivered 86k anchor, printing mesh-corrected TSD err%
    per M; M1.075/M1.100 excluded — no delivered anchors. Resized for
-   the WSL VM cap the host set at 3 GB (was 2 GB — under it,
-   MemAvailable could never reach the original 4 GB mesh gate, a hard
-   deadlock): snappy cell cap 280k, gates 2.5 GB mesh / 1.8 GB solve,
-   container limit raise 1.5→2.5 GB at relaunch, overflow to swap;
-   the scheme variant (L5-2) is unstaged.
+   the WSL VM cap the host set at 3 GB RAM + 4 GB swap (was 2 GB —
+   under it MemAvailable could never reach the original 4 GB mesh
+   gate, a hard deadlock): gates 2.0 GB mesh / 1.8 GB solve, full
+   snappy caps restored, container limit raised 1.5→2.5 GB. First
+   launch false-aborted at the 150k cell floor: the measured fine
+   mesh at the full (4 5)/(0.15 4)(0.4 3) refinement is **125,008
+   cells ("Mesh OK", 24.9 s build) — 1.45× the campaign mesh**; the
+   250–450k estimate was wrong for this geometry (the wing's refined
+   volume is small). Floor lowered to 100k and relaunched — the 86k →
+   125k step is the honest refinement available in this VM; the
+   scheme variant (L5-2) is unstaged.
 6. CLI battery addendum to §2 — **done** (`4cce6c6`; 10/12 pairs ≤1%, two
    flags closed as termination position, §1.3).
 
