@@ -4,14 +4,18 @@
 # L5 established that the delivered dfvlr anchors (uniform 86k mesh) are
 # mesh-sensitive: a reconstructed 45.6k probe gives +30.5%/+19.0% CL at
 # M0.925/M1.000. This program builds a FINER mesh (~250-450k cells) from
-# the M0.900 template and re-runs the two ceiling points to t=0.25, to
-# test whether the 86k anchors are mesh-converged.
+# the M0.900 template and re-runs the WHOLE dfvlr band M0.850-1.050
+# (9 points: the campaign regime that has delivered 86k anchors) to
+# t=0.25, to test whether the 86k anchors are mesh-converged and to
+# give the mesh-correction band as a function of M.
 #
 # Run inside oftrans:  bash /tmp/dfvlr_fine.sh > /tmp/dfvlr_fine.log 2>&1
 # Results: /caseCampaign/probes/dfvlr_fine_results.txt
 #
-# RAM-gated: waits for MemAvailable before meshing (>4 GB) and before
-# each solve (>2.5 GB), because the host is shared.
+# RAM-gated: waits for MemAvailable before meshing (>2.5 GB) and before
+# each solve (>1.8 GB). Sized for the WSL VM cap of 3 GB (host decision
+# 2026-10-21; overflow goes to swap): snappy cell cap 280k → expected
+# mesh ~200-280k cells, solve RSS ~3-3.5 GB with the last ~1 GB paged.
 
 # single-instance lock: a second invocation exits immediately
 LOCK=/tmp/dfvlr_fine.lock
@@ -37,12 +41,12 @@ TEMPLATE=campaign/dfvlr_r4_M0.900_a1.25
 BASE=probes/dfvlr_fine
 
 echo "=== stage 1: fine mesh from template ==="
-wait_ram 4000 mesh
+wait_ram 2500 mesh
 rm -rf "$BASE"; mkdir -p "$BASE"
 cp -r "$TEMPLATE/0" "$TEMPLATE/constant" "$TEMPLATE/system" "$BASE/"
 cd "$BASE" || exit 2
-sed -i -e 's/maxLocalCells 40000/maxLocalCells 250000/' \
-       -e 's/maxGlobalCells 65000/maxGlobalCells 450000/' \
+sed -i -e 's/maxLocalCells 40000/maxLocalCells 150000/' \
+       -e 's/maxGlobalCells 65000/maxGlobalCells 280000/' \
        -e 's/level (3 4)/level (4 5)/' \
        -e 's/levels ((0.15 3) (0.4 2))/levels ((0.15 4) (0.4 3))/' \
        -e 's/nCellsBetweenLevels 3/nCellsBetweenLevels 4/' \
@@ -59,7 +63,7 @@ fi
 
 echo "=== stage 2: per-M cases (U/p/T copied from the delivered same-M cases) ==="
 cd /caseCampaign/probes || exit 2
-for M in 0.925 1.000; do
+for M in 0.850 0.875 0.900 0.925 0.950 0.975 1.000 1.025 1.050; do
   rm -rf "dfvlr_fine_M${M}"
   cp -r dfvlr_fine "dfvlr_fine_M${M}"
   cd "dfvlr_fine_M${M}" || exit 2
@@ -76,7 +80,7 @@ run_case() {
   c=$1
   cd "/caseCampaign/probes/$c" || exit 2
   rm -rf 0.[0-9]* postProcessing
-  wait_ram 2500 "$c"
+  wait_ram 1800 "$c"
   echo "$(date +%H:%M:%S) SOLVE START $c" >> /tmp/dfvlr_fine_batch.log
   rhoCentralFoam > log.run 2>&1
   f=$(find postProcessing -name coefficient.dat 2>/dev/null | head -1)
@@ -87,20 +91,31 @@ run_case() {
     echo "$c NOFORCES" >> /tmp/dfvlr_fine_batch.log
   fi
 }
-run_case dfvlr_fine_M0.925
-run_case dfvlr_fine_M1.000
+for M in 0.850 0.875 0.900 0.925 0.950 0.975 1.000 1.025 1.050; do
+  run_case "dfvlr_fine_M${M}"
+done
 
-echo "=== stage 4: comparison vs the 86k anchors ==="
+echo "=== stage 4: comparison vs the 86k anchors + TSD ==="
+anchor_for() { case $1 in
+  0.850) echo 0.2674053;; 0.875) echo 0.2729032;; 0.900) echo 0.2791015;;
+  0.925) echo 0.2779525;; 0.950) echo 0.2688365;; 0.975) echo 0.2460678;;
+  1.000) echo 0.2126116;; 1.025) echo 0.1725623;; 1.050) echo 0.1334340;; esac; }
+tsd_for() { case $1 in
+  0.850) echo 0.5036366438470022;; 0.875) echo 0.49591162975187797;;
+  0.900) echo 0.4515527059358044;; 0.925) echo 0.47761650712854;;
+  0.950) echo 0.4764804179702282;; 0.975) echo 0.4935046159921045;;
+  1.000) echo 0.5036980989060582;; 1.025) echo 0.4823874197719977;;
+  1.050) echo 0.5018454086784541;; esac; }
 {
-  echo "# dfvlr fine-mesh probe results $(date -u +%FT%TZ)"
+  echo "# dfvlr fine-mesh band results $(date -u +%FT%TZ)"
   echo "# mesh: $(cd /caseCampaign/probes/dfvlr_fine && grep -a -m1 'cells:' log.check)"
-  echo "# anchors (86k): M0.925 CL=0.2779525  M1.000 CL=0.2126116"
-  for M in 0.925 1.000; do
+  echo "# columns: M t fine_CL anchor86k mesh_corr% tsd_cl err_vs_fine% err_asrun%"
+  for M in 0.850 0.875 0.900 0.925 0.950 0.975 1.000 1.025 1.050; do
     f=$(find "/caseCampaign/probes/dfvlr_fine_M${M}/postProcessing" -name coefficient.dat 2>/dev/null | head -1)
     if [ -n "$f" ]; then
-      cl=$(tail -n 1 "$f" | awk '{print $5}')
-      t=$(tail -n 1 "$f" | awk '{print $1}')
-      echo "dfvlr_fine_M${M}  t=${t}  CL=${cl}"
+      tail -n 1 "$f" | awk -v m="$M" -v a="$(anchor_for "$M")" -v s="$(tsd_for "$M")" \
+        '{t=$1; cl=$5; mc=(cl-a)/a*100; e1=(s-cl)/cl*100; e2=(s-a)/a*100;
+          printf "%s  t=%s  fine_CL=%.7f  anchor86k=%.7f  mesh_corr=%+.2f%%  tsd_cl=%.7f  err_vs_fine=%+.2f%%  err_asrun=%+.2f%%\n", m, t, cl, a, mc, s, e1, e2}'
     else
       echo "dfvlr_fine_M${M}  NOFORCES"
     fi

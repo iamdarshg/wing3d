@@ -450,9 +450,14 @@ remains unstaged.
    fixed (`tmp_lane_fix.sh`), coarse pair completed to t=0.25 →
    **ΔCL = +30.5% / +19.0% → resolution matters**. Follow-on = OF mesh
    refinement program — finer-mesh leg staged
-   (`container_coeffs/dfvlr_fine.sh`; RAM-gated — >6 GB parallel with
-   the ep24 lane, >4 GB now that g120 ep24 completed 2026-10-21 19:19,
-   armed as a detached restart-proof watcher);
+   (`container_coeffs/dfvlr_fine.sh`; widened 2026-10-21 evening from
+   the two ceiling points to the full band **M0.850–1.050 — 9 solves**,
+   each vs its delivered 86k anchor, printing mesh-corrected TSD err%
+   per M; M1.075/M1.100 excluded — no delivered anchors. Resized for
+   the WSL VM cap the host set at 3 GB (was 2 GB — under it,
+   MemAvailable could never reach the original 4 GB mesh gate, a hard
+   deadlock): snappy cell cap 280k, gates 2.5 GB mesh / 1.8 GB solve,
+   container limit raise 1.5→2.5 GB at relaunch, overflow to swap;
    the scheme variant (L5-2) is unstaged.
 6. CLI battery addendum to §2 — **done** (`4cce6c6`; 10/12 pairs ≤1%, two
    flags closed as termination position, §1.3).
