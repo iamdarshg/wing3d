@@ -302,7 +302,14 @@ python tests3d/cli_battery.py --jobs 3
   (`ERROR_REDUCTION_SCOPE.md` §4). At 160×64×64 the shock-heavy cambered
   cases need ~14–16 epochs and can settle on a different mask state; the
   rae +3.2% grid correction is a g120/small-mask result, and the dfvlr
-  TSD value carries a ±10% grid/iteration band. Campaign TSD values are
+  TSD value carries a ±10% grid/iteration band. The g120 ep24
+  metastability test (complete 2026-10-21 19:19) then confirmed the
+  small-mask state is a stable fixed point: CL 0.25845 at ep24 (+3.77%
+  vs campaign, +2.97% vs OpenFOAM), ep2–23 band 0.2580–0.2613, nsup
+  plateaued at ~530–595 with no drift toward the large-mask basin — so
+  the rae +3.2% correction is a legitimate branch, not an
+  under-iteration artifact (the −18/−21% g140/g160 values document the
+  alternative basin). Campaign TSD values are
   therefore not grid-converged; §6 stands as the as-run campaign record.
 - TSD values are single final-epoch readings; the dfvlr_r4 solves wobble
   ±3–6% between epochs (rae ≤1.0%, naca ≤2.1%, biconvex ≤2.3%), so dfvlr

@@ -12,9 +12,10 @@ confirmation set (rae +4.0%, naca +12.5%, biconvex +12.8%, naca M0.95
 0.2054–0.2056) are complete and folded in below, plus the rae g140ep16
 discriminator: CL 0.19683 (−20.97%), *below* both g120 (0.25906) and
 g160 (0.20561) — non-monotone → supersonic-mask state selection, not a
-grid trend (§4). One run queued behind a RAM gate: g120 ep24
-metastability test (host at 0.41 GB free 2026-10-21 15:25; auto-launches
-when free > 2.5 GB). Host
+grid trend (§4). The g120 ep24 metastability test **completed 2026-10-21 19:19**:
+the small-mask state is a stable fixed point — CL 0.25845 (+3.77% vs
+campaign, +2.97% vs OpenFOAM), nsup plateaued ~530–595 over 24 epochs,
+no large-mask transit (§4). Host
 lanes were terminated by a machine restart at 2026-10-19 21:19 (no
 campaign data lost); restarted 2026-10-20 13:48 under a 2-lane cap. L5: the first probe pair reproduced the corpus ceiling values
 bit-exactly on the same (refined) mesh — a determinism check, not a mesh
@@ -42,7 +43,7 @@ rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
 |---|-------|----------------|-------------------|------|----------|
 | L1 | **Config pairing**: OF is wall-at-tip, TSD is free-tip | naca/biconvex −20…−40%; rae S-shape | Probe A **done**: OF free-tip (naca M0.85) = 0.0629 vs wall 0.0728 → wall inflates +15.8%; free-vs-free residual +24.2% at campaign grid, **+10.4% at g120ep16** | done (5.3 h) | ≈16 pp of the +44% naca gap is config; free-vs-free ≈ +10.4% once grid-converged |
 | L2 | **Corpus mesh seams** (mixed resolutions per row) | rae (48k vs 54k); dfvlr none (uniform 86k) | fills landed: **dfvlr is uniform 86k at every M** — the 45.6k case dirs are failed-retry debris, no delivered value came from them (§3); rae's real seams are smooth | done | **closed: no dfvlr seam; mesh sensitivity itself is real but is L5's lever, not a corpus seam** |
-| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + g120ep16/g160ep16 confirmations **done** (4 geos, 8 runs: 6 g120ep16 + 2 g160ep16): rae +4.0% (stable), naca +12.5%, biconvex +12.8%, naca M0.95 +6.7%, naca M1.05 +12.9%, dfvlr −18.2% g120ep16 (was −7.3% at ep8 — the ep8 g120/g160 "agreement" was under-iteration), dfvlr g160ep16 −9.95% (still −1.0% in the last epoch), rae g160ep16 −17.45% (settled, 20.6% below g120), rae g140ep16 −20.97% (below both → supersonic-mask state selection, §4); box inert ≤1.4% | g120 ep24 RAM-gated (host RAM-starved) | **the largest single lever: −21…+13% CL, sign per geo** |
+| L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + g120ep16/g160ep16 confirmations **done** (4 geos, 8 runs: 6 g120ep16 + 2 g160ep16): rae +4.0% (stable), naca +12.5%, biconvex +12.8%, naca M0.95 +6.7%, naca M1.05 +12.9%, dfvlr −18.2% g120ep16 (was −7.3% at ep8 — the ep8 g120/g160 "agreement" was under-iteration), dfvlr g160ep16 −9.95% (still −1.0% in the last epoch), rae g160ep16 −17.45% (settled, 20.6% below g120), rae g140ep16 −20.97% (below both → supersonic-mask state selection, §4); rae g120ep24 0.25845 (+3.77%) — small-mask fixed point confirmed over 24 epochs; box inert ≤1.4% | done (ep24) | **the largest single lever: −21…+13% CL, sign per geo** |
 | L4 | **TSD estimator + imprint resolution** | all; dfvlr wobble | ep16 at g80 moves toward the fine-grid answer (naca +4.2%, dfvlr −3.5%); drift evidence §1.3 | folded into L3 study | ≤ ~4%; subsumed by L3 |
 | L5 | **OF scheme/refinement at the ceiling** | dfvlr +62…+276%; rae M1.0+ | refined-mesh dfvlr peak 0.2791 @ M0.900 (reconstructed 45.6k probe: 0.3627 @ M0.925); M0.925/M1.000 probe pair reproduced the corpus values **bit-exactly** → the corpus ceiling values are already refined-mesh (86k) runs (solver deterministic); a preserved 45.6k copy (`/dfvlr_coarse`, **not a campaign case**) failed checkMesh (**root-caused**: constant points = 59,360 with 49 strays; good 59,311 points in that scratch case's `0/polyMesh`) → lanes fixed + **reconstructed** coarse pair **complete to t=0.25**: CL 0.3626993 / 0.2529717 vs refined 0.2779525 / 0.2126116 = **+30.5% / +19.0%** | done | **resolution matters** — dfvlr anchors are mesh-sensitive, not mesh-converged; corpus never used the 45.6k mesh; scheme variant (L5-2) unstaged |
 | L6 | Mach-alignment accounting | all ±1.5 pp; dfvlr ±4.5 pp | aligned-M table (§1.2) | doc-only | not a fix; band note only |
@@ -271,10 +272,17 @@ seed, and the ep0 seed is grid-dependent (nsup at ep0: 212 / 1357 / 685).
 Neither branch is demonstrably converged (nsup still creeping at ep15).
 Consequence: rae's +3.2% (g120) and −18.1% (g160) are two states of an
 unconverged nonlinear iteration, not a grid-convergence sequence; the
-under-10% mid-band claim rests on the small-mask state. Next test
-(queued): g120 extended to ep24 — if the small-mask state is a true fixed
-point it stays at ≈0.259; if it drifts, all grids converge large-mask and
-the "true" TSD rae answer is ≈0.20.
+under-10% mid-band claim rests on the small-mask state. **Metastability
+verdict (g120 ep24, complete 2026-10-21 19:19): the small-mask state is a
+true fixed point.** The extended run reproduced ep0–15 bit-exactly after
+a mid-run OOM kill/relaunch and continued cleanly to ep24: CL 0.25845
+(+3.77% vs campaign, +2.97% vs OpenFOAM 0.2510), ep2–23 CL band
+0.2580–0.2613 (±0.6%), and nsup — after the ep0→13 creep 212→581 —
+plateaus and oscillates at ~530–595 with no drift toward the large-mask
+basin (~1230). The +3.2% small-mask rae pairing stands as a legitimate
+branch; the −18/−21% g140/g160 values document the alternative basin,
+not "the converged truth". Evidence:
+`tests3d/tsd_conv2_rae2822_M0.850_g120x48x48_ep24.json`.
 
 **Second-stage confirmations (g120 + ep16, `tests3d/tsd_conv2.py`):**
 
@@ -289,6 +297,7 @@ the "true" TSD rae answer is ≈0.20.
 | dfvlr_r4 M0.85 g160ep16 | 0.50364 | **0.45354** | **−9.95%** | — | done — 0.4875→0.4535; still −1.0% in the last epoch (NOT settled) |
 | rae2822 M0.85 g160ep16 | 0.24907 | **0.20561** | **−17.45%** | — | done — settled 0.2054–0.2056 (ep14–15); 20.6% below g120 (grid-dependent state) |
 | rae2822 M0.85 g140ep16 | 0.24907 | **0.19683** | **−20.97%** | — | done — large-mask state (nsup→1226); below both g120 and g160 → non-monotone (§4) |
+| rae2822 M0.85 g120ep24 | 0.24907 | **0.25845** | **+3.77%** | −0.42% | done — small-mask fixed point: CL band 0.2580–0.2613 over 24 epochs, nsup plateau ~530–595, no large-mask transit |
 
 Consequences: campaign TSD values are not grid-converged (as-run caveat,
 `CAMPAIGN_REPORT.md` §9). Corrected M0.85 pairings:
@@ -303,9 +312,12 @@ Consequences: campaign TSD values are not grid-converged (as-run caveat,
   state selection (small-mask g120 vs large-mask g140/g160), not a grid
   trend (§4). The two state pairings: small-mask err% = **+3.2%**
   (OF/TSD − 1 = −3.1%), large-mask err% = **−18.1%** at g160 (−21.6% at
-  g140). The rae under-10% mid-band claim rests on the small-mask state:
-  rae is the case where solver state — not grid convergence — changes
-  the verdict.
+  g140). The rae under-10% mid-band claim rests on the small-mask state —
+  and the g120 ep24 metastability test confirms that state is a stable
+  fixed point (CL 0.25845 at ep24, +2.97% vs OF; nsup plateaued
+  ~530–595, no large-mask transit), so the +3.2% small-mask pairing
+  stands as a legitimate branch. rae is the case where solver state —
+  not grid convergence — changes the verdict.
 - **dfvlr**: 0.2674 vs 0.4535 (g160ep16, still −1.0% in its last epoch) →
   OF/TSD−1 = **−41.0%** (as-run −46.9%; the g120ep16 −35.1% was
   grid/iteration-under-converged, not convergence). The TSD value keeps
@@ -417,8 +429,16 @@ remains unstaged.
    13:48 under a 2-lane cap — dfvlr g160ep16 done (−9.95%, not settled);
    rae g160ep16 done (−17.45%, settled at 0.2054–0.2056, 20.6% below g120).
    rae g140ep16 done (−20.97%, below both g120 and g160 → mask-state
-   selection, §4). g120 ep24 metastability test queued behind a RAM gate
-   (host at 0.41 GB free 2026-10-21 15:25).
+   selection, §4). g120 ep24 metastability test **done 2026-10-21
+   19:19**: small-mask fixed point confirmed (0.25845, +3.77% vs
+   campaign, +2.97% vs OF; nsup plateau ~530–595, no large-mask transit;
+   first attempt OOM-killed at ep16 by a host RAM spike, relaunched
+   bit-exact). Housekeeping incident: the ep24 lane predated the
+   `tsd_conv2.py` naming fix, so it wrote the unsuffixed
+   `tsd_conv2_rae2822_M0.850.json` (overwriting the campaign-era file);
+   final result preserved as
+   `tests3d/tsd_conv2_rae2822_M0.850_g120x48x48_ep24.json`, killed first
+   attempt as `..._overwritten_ep24partial.json`.
 4. Seam verdict from fills — **done, provenance-corrected**: dfvlr is
    uniform 86k at every M (no seam; the 45.6k dirs are failed-retry
    debris), rae's seams are smooth. Mesh sensitivity itself is L5:
@@ -430,7 +450,9 @@ remains unstaged.
    fixed (`tmp_lane_fix.sh`), coarse pair completed to t=0.25 →
    **ΔCL = +30.5% / +19.0% → resolution matters**. Follow-on = OF mesh
    refinement program — finer-mesh leg staged
-   (`container_coeffs/dfvlr_fine.sh`, RAM-gated parallel with g120 ep24);
+   (`container_coeffs/dfvlr_fine.sh`; RAM-gated — >6 GB parallel with
+   the ep24 lane, >4 GB now that g120 ep24 completed 2026-10-21 19:19,
+   armed as a detached restart-proof watcher);
    the scheme variant (L5-2) is unstaged.
 6. CLI battery addendum to §2 — **done** (`4cce6c6`; 10/12 pairs ≤1%, two
    flags closed as termination position, §1.3).
