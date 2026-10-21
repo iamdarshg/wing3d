@@ -12,10 +12,10 @@
 # Run inside oftrans:  bash /tmp/dfvlr_fine.sh > /tmp/dfvlr_fine.log 2>&1
 # Results: /caseCampaign/probes/dfvlr_fine_results.txt
 #
-# RAM-gated: waits for MemAvailable before meshing (>2.5 GB) and before
-# each solve (>1.8 GB). Sized for the WSL VM cap of 3 GB (host decision
-# 2026-10-21; overflow goes to swap): snappy cell cap 280k → expected
-# mesh ~200-280k cells, solve RSS ~3-3.5 GB with the last ~1 GB paged.
+# RAM-gated: waits for MemAvailable before meshing (>2 GB) and before
+# each solve (>1.8 GB). Sized for the WSL VM the host set at 3 GB RAM
+# + 4 GB swap (2026-10-21): full snappy caps (450k cells) restored,
+# solve RSS ~5 GB with the overflow paged.
 
 # single-instance lock: a second invocation exits immediately
 LOCK=/tmp/dfvlr_fine.lock
@@ -41,12 +41,12 @@ TEMPLATE=campaign/dfvlr_r4_M0.900_a1.25
 BASE=probes/dfvlr_fine
 
 echo "=== stage 1: fine mesh from template ==="
-wait_ram 2500 mesh
+wait_ram 2000 mesh
 rm -rf "$BASE"; mkdir -p "$BASE"
 cp -r "$TEMPLATE/0" "$TEMPLATE/constant" "$TEMPLATE/system" "$BASE/"
 cd "$BASE" || exit 2
-sed -i -e 's/maxLocalCells 40000/maxLocalCells 150000/' \
-       -e 's/maxGlobalCells 65000/maxGlobalCells 280000/' \
+sed -i -e 's/maxLocalCells 40000/maxLocalCells 250000/' \
+       -e 's/maxGlobalCells 65000/maxGlobalCells 450000/' \
        -e 's/level (3 4)/level (4 5)/' \
        -e 's/levels ((0.15 3) (0.4 2))/levels ((0.15 4) (0.4 3))/' \
        -e 's/nCellsBetweenLevels 3/nCellsBetweenLevels 4/' \
