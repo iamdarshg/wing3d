@@ -389,8 +389,17 @@ is a config/physics documentation case; if ≥ ~3%, resolution matters and
 the ceiling story merges with mesh sensitivity (L5), not with an L2 seam.
 **Applied: +30.5% / +19.0% → resolution matters.** The L5 continuation is therefore an OF mesh-refinement program
 (coarse → refined → finer on the dfvlr high-M points), not the scheme
-swap; the scheme variant (same case, less-dissipative flux scheme, fixed
-mesh; ~4–6 h) is unstaged.
+swap. The **finer-mesh leg is staged**: `container_coeffs/dfvlr_fine.sh`
+builds a ~250–450k-cell mesh from the M0.900 template (surface level
+(3 4)→(4 5), distance band (0.15 3)/(0.4 2)→(0.15 4)/(0.4 3), cell caps
+65k→450k) and re-runs M0.925/M1.000 to t=0.25 with `0/{U,p,T}` copied
+from the delivered same-M cases (CL read from coefficient.dat col 5,
+verified against the 0.2779525 anchor). It is chained behind the g120
+ep24 lane behind a RAM gate (mesh stage waits for >4 GB free, each solve
+>2.5 GB); est. 6–12 h of solve at the finer mesh (adjustTimeStep +
+maxCo 0.5 means cost scales with both cells and passes). The scheme
+variant (same case, less-dissipative flux scheme, fixed mesh; ~4–6 h)
+remains unstaged.
 
 ---
 
@@ -418,7 +427,9 @@ mesh; ~4–6 h) is unstaged.
    `constant/polyMesh/points`; good points in `0/polyMesh/points`); lanes
    fixed (`tmp_lane_fix.sh`), coarse pair completed to t=0.25 →
    **ΔCL = +30.5% / +19.0% → resolution matters**. Follow-on = OF mesh
-   refinement program; the scheme variant (L5-2) is unstaged.
+   refinement program — finer-mesh leg staged
+   (`container_coeffs/dfvlr_fine.sh`, chained behind g120 ep24 behind a
+   RAM gate); the scheme variant (L5-2) is unstaged.
 6. CLI battery addendum to §2 — **done** (`4cce6c6`; 10/12 pairs ≤1%, two
    flags closed as termination position, §1.3).
 
