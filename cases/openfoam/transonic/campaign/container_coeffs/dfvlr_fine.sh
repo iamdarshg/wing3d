@@ -13,6 +13,15 @@
 # RAM-gated: waits for MemAvailable before meshing (>4 GB) and before
 # each solve (>2.5 GB), because the host is shared.
 
+# single-instance lock: a second invocation exits immediately
+LOCK=/tmp/dfvlr_fine.lock
+if [ -f "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+  echo "dfvlr_fine already running (pid $(cat "$LOCK")) - exiting"
+  exit 0
+fi
+echo $$ > "$LOCK"
+trap 'rm -f "$LOCK"' EXIT
+
 source /usr/lib/openfoam/openfoam2406/etc/bashrc
 cd /caseCampaign
 
