@@ -12,7 +12,7 @@ TEMPL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
 
 
 def make_euler_central(root, mach, alpha_deg, p_inf=1e5, T_inf=300.0,
-                       span_in=1.2, end_time=0.3):
+                       span_in=1.6, end_time=0.3):
     """Overwrite system/constant/0 of an existing case dir (mesh kept).
 
     Proven templates (biconic fvSchemes/fvSolution, LTS controlDict,
@@ -79,6 +79,10 @@ def make_euler_central(root, mach, alpha_deg, p_inf=1e5, T_inf=300.0,
                  'stopAt endTime; endTime %s;' % end_time, txt)
     txt = re.sub(r'magUInf [\d.eE+-]+', 'magUInf %.3f' % Umag, txt)
     txt = re.sub(r'rhoInf [\d.eE+-]+', 'rhoInf %.4f' % rho_inf, txt)
+    # Aref MUST match the physical span: template default was the old
+    # 1.2 m slab; the campaign span is 1.6 m. A stale Aref re-normalizes
+    # CL by span/1.2 with no error raised (audit 2026-10-22).
+    txt = re.sub(r'Aref [\d.eE+-]+', 'Aref %.1f' % span_in, txt)
     txt = re.sub(r'(deltaT\s+)[\d.eE+-]+', r'\g<1>2e-5', txt)
     txt = re.sub(r'maxCo\s+[\d.eE+-]+', 'maxCo 0.5', txt)
     txt = re.sub(r'maxDeltaT\s+[\d.eE+-]+', 'maxDeltaT 1e-4', txt)

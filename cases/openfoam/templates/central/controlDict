@@ -12,7 +12,7 @@ functions {
   patches ("slab.stl");
   rho rhoInf; rhoInf 1.1614; CofR (0.25 0 0);
   liftDir (0 0 1); dragDir (1 0 0); pitchAxis (0 1 0);
-  magUInf 277.751; lRef 1.0; Aref 1.2;
+  magUInf 277.751; lRef 1.0; Aref 1.6;
  }
  residuals { type residuals; libs ("libutilityFunctionObjects.so");
   writeControl timeStep; writeInterval 10; fields (p U T); }
