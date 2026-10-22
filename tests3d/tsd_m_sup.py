@@ -29,6 +29,11 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         # the operator coefficients depend on Minf (read live in residual)
         s = base
     s.Minf = M
+    # clear stale frozen state: a previous Mach that raised leaves the
+    # lagged mask/A/rho on the shared `base`, silently seeding this run
+    # (perf-audit trap T5).
+    s._frozen = s._frozenA = s._frozenRho = None
+    s._frozenRhon = None
     if profile is not None:
         s.profile = profile
     # strip panel imprints that lock the subsonic circulation:
@@ -72,6 +77,7 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         dx = s.dx
         phix = (s.phi[1:, :, :] - s.phi[:-1, :, :]) / dx[:, None, None]
         s._frozenRho = s._face_rho(phix)
+        s._frozenRhon = s._nodal_rho()
         y0 = np.concatenate([s.phi[1:].ravel(), s.k.copy()]) if free_k \
             else s.phi[1:].ravel()
         y = newton_krylov(func, y0, iter=80, verbose=False,
@@ -86,6 +92,7 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         if callback is not None:
             callback(ep, float(L['CL']), supn)
     s._frozen = s._frozenA = s._frozenRho = None
+    s._frozenRhon = None
     L = s.fp_loads()
     jy = np.asarray(s.wing_jy)
     j0 = jy[np.argmin(np.abs(s.yc[jy]))]

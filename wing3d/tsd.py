@@ -209,6 +209,11 @@ class TSDSolver:
         self.kutta_w = 1.0  # Kutta-row weight in extended residual
         self._circff = None  # farfield circulation (wake interp target)
         self._frozenRho = None  # frozen face density (fullpot epochs)
+        # frozen NODAL density (fullpot epochs). Without this the epoch
+        # operator is not affine: rho_n is recomputed from the live phi on
+        # every residual call, so "frozen" epochs chase a moving operator
+        # (measured affinity drift 1.5e-2; perf audit 2026-10-22).
+        self._frozenRhon = None
         # metrics
         self.dx = np.diff(self.x)
         self.dy = np.diff(self.y)
@@ -305,6 +310,31 @@ class TSDSolver:
             return self._face_rho(phix_f)
         return self._coeff_A(phix_f)
 
+    def _nodal_rho(self):
+        """Isentropic nodal density from the current phi (fullpot).
+
+        Extracted from residual() so a frozen epoch can reuse a lagged
+        copy (self._frozenRhon) and keep the epoch operator affine.
+        """
+        phi = self.phi
+        gx = np.zeros_like(phi)
+        gx[1:-1] = (phi[2:] - phi[:-2]) / (
+            self.x[2:] - self.x[:-2])[:, None, None]
+        gy = np.zeros_like(phi)
+        gy[:, 1:-1] = (phi[:, 2:] - phi[:, :-2]) / (
+            self.y[2:] - self.y[:-2])[None, :, None]
+        gz = np.zeros_like(phi)
+        gz[:, :, 1:-1] = (phi[:, :, 2:] - phi[:, :, :-2]) / (
+            self.z[2:] - self.z[:-2])[None, None, :]
+        q2n = (1 + gx) ** 2 + gy ** 2 + gz ** 2
+        gm = self.gamma
+        q2max = 1 - (0.2 ** (gm - 1) - 1.0) * 2 / max(
+            (gm - 1) * self.Minf ** 2, 1e-9)
+        q2n = np.minimum(np.maximum(q2n, 0.0), q2max)
+        return np.maximum(
+            (1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2n)) ** (
+                1 / (gm - 1)), 0.2)
+
     def _sup_mask(self):
         """Current supersonic-face mask (for frozen-coefficient epochs)."""
         dx = self.dx
@@ -344,23 +374,8 @@ class TSDSolver:
         # nodal density (fullpot only; TSD/linear use unit density)
         rho_n = None
         if fp:
-            gx = np.zeros_like(phi)
-            gx[1:-1] = (phi[2:] - phi[:-2]) / (
-                self.x[2:] - self.x[:-2])[:, None, None]
-            gy = np.zeros_like(phi)
-            gy[:, 1:-1] = (phi[:, 2:] - phi[:, :-2]) / (
-                self.y[2:] - self.y[:-2])[None, :, None]
-            gz = np.zeros_like(phi)
-            gz[:, :, 1:-1] = (phi[:, :, 2:] - phi[:, :, :-2]) / (
-                self.z[2:] - self.z[:-2])[None, None, :]
-            q2n = (1 + gx) ** 2 + gy ** 2 + gz ** 2
-            gm = self.gamma
-            q2max = 1 - (0.2 ** (gm - 1) - 1.0) * 2 / max(
-                (gm - 1) * self.Minf ** 2, 1e-9)
-            q2n = np.minimum(np.maximum(q2n, 0.0), q2max)
-            rho_n = np.maximum(
-                (1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2n)) ** (
-                    1 / (gm - 1)), 0.2)
+            rho_n = (self._frozenRhon if self._frozenRhon is not None
+                     else self._nodal_rho())
         # ---- y (central, density-weighted in fullpot) ----
         phiy_f = (phi[:, 1:, :] - phi[:, :-1, :]) / dy[None, :, None]
         if fp:
