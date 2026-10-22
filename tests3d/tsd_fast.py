@@ -29,6 +29,8 @@ left those DOFs to the Krylov trajectory); it is reported separately.
 Unknown layout (same as tsd_m_sup.run_sup):
     y = phi[1:, :, :].ravel()   (inflow plane i=0 is pinned to 0)
 """
+import time
+
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import gmres, LinearOperator
@@ -159,8 +161,67 @@ def patch_bc(A, b, y0, shape, outflow='extrapolate'):
     return (A + pat).tocsr()
 
 
-def solve_epoch(func, y0, shape, rtol=1e-8, restart=60, maxiter=4000,
-                newton_max=2, outflow='extrapolate', verbose=False):
+class LinePrecond(object):
+    """Exact tridiagonal x-line solve as a GMRES preconditioner.
+
+    The grid anisotropy is 500-1200:1 in x, so Jacobi leaves ~660 Krylov
+    iterations.  The x-lines are the dominant coupling: extract the
+    tridiagonal part of A along x (diagonal + first off-diagonals,
+    dropping the i-2 upwind entry) and solve all (j,k) lines exactly with
+    a batched Thomas sweep.  Costs ~1-3 ms/apply.
+    """
+
+    def __init__(self, A, shape):
+        nx, ny, nz = shape
+        n = A.shape[0]
+        stride = ny * nz
+        Ac = A.tocoo()
+        diag = np.zeros(n)
+        sub = np.zeros(n)
+        sup = np.zeros(n)
+        md = Ac.col == Ac.row
+        diag[Ac.row[md]] = Ac.data[md]
+        ms = Ac.col == Ac.row - stride
+        sub[Ac.row[ms]] = Ac.data[ms]
+        mu = Ac.col == Ac.row + stride
+        sup[Ac.row[mu]] = Ac.data[mu]
+        sh = (nx - 1, ny, nz)
+
+        def lines(a):
+            return a.reshape(sh).transpose(1, 2, 0).reshape(-1, nx - 1)
+
+        self.shape = shape
+        self.n = n
+        self.d = lines(diag)
+        self.dl = lines(sub)
+        self.du = lines(sup)
+
+    def apply(self, v):
+        nx, ny, nz = self.shape
+        L = nx - 1
+        V = v.reshape(nx - 1, ny, nz).transpose(1, 2, 0).reshape(
+            -1, L).astype(float, copy=True)
+        d, dl, du = self.d, self.dl, self.du
+        cp = np.empty_like(V)
+        dp = np.empty_like(V)
+        den = np.where(np.abs(d[:, 0]) < 1e-300, 1.0, d[:, 0])
+        cp[:, 0] = du[:, 0] / den
+        dp[:, 0] = V[:, 0] / den
+        for i in range(1, L):
+            den = d[:, i] - dl[:, i] * cp[:, i - 1]
+            den = np.where(np.abs(den) < 1e-300, 1.0, den)
+            cp[:, i] = du[:, i] / den
+            dp[:, i] = (V[:, i] - dl[:, i] * dp[:, i - 1]) / den
+        X = np.empty_like(V)
+        X[:, L - 1] = dp[:, L - 1]
+        for i in range(L - 2, -1, -1):
+            X[:, i] = dp[:, i] - cp[:, i] * X[:, i + 1]
+        return X.reshape(ny, nz, L).transpose(2, 0, 1).ravel()
+
+
+def solve_epoch(func, y0, shape, rtol=1e-8, restart=60, maxiter=1500,
+                newton_max=2, outflow='extrapolate', precond='line',
+                verbose=False):
     """Solve one frozen epoch operator.
 
     Returns (y, info) with info = {'maxF0','maxF','gmres_info','n_evals',
@@ -183,9 +244,17 @@ def solve_epoch(func, y0, shape, rtol=1e-8, restart=60, maxiter=4000,
             break
         b = -F0.copy()
         A = patch_bc(A, b, y, shape, outflow=outflow)
-        diag = A.diagonal()
-        diag[np.abs(diag) < 1e-300] = 1.0
-        M = LinearOperator(A.shape, matvec=lambda v: v / diag)
+        M = None
+        if precond == 'line':
+            try:
+                M = LinearOperator(A.shape,
+                                   matvec=LinePrecond(A, shape).apply)
+            except Exception:
+                M = None
+        if M is None:
+            diag = A.diagonal()
+            diag[np.abs(diag) < 1e-300] = 1.0
+            M = LinearOperator(A.shape, matvec=lambda v: v / diag)
         n = y.size
         bnorm = np.linalg.norm(b)
         if bnorm == 0.0:
@@ -194,11 +263,17 @@ def solve_epoch(func, y0, shape, rtol=1e-8, restart=60, maxiter=4000,
 
         def _cb(_r):
             count[0] += 1
+            if verbose and count[0] % 200 == 0:
+                print('    gmres iters %d (%.0fs)' % (
+                    count[0], time.time() - tg0), flush=True)
 
+        tg = time.time()
+        tg0 = tg
         delta, ginfo = gmres(A, b / bnorm, rtol=rtol, atol=0.0,
                              restart=restart, maxiter=maxiter, M=M,
                              callback=_cb, callback_type='pr_norm')
         delta = delta * bnorm
+        lin_res = float(np.linalg.norm(A @ delta - b) / bnorm)
         info['gmres_info'].append(int(ginfo))
         info['linear_iters'].append(int(count[0]))
         y = y + delta
@@ -207,8 +282,10 @@ def solve_epoch(func, y0, shape, rtol=1e-8, restart=60, maxiter=4000,
         maxF = float(np.max(np.abs(F1)))
         info['maxF'] = maxF
         if verbose:
-            print('  newton %d -> |F|=%.3e (gmres info %d)' % (
-                it, maxF, ginfo), flush=True)
+            print('  newton %d -> |F|=%.3e  gmres info=%d iters=%d '
+                  'linres=%.1e  %.1fs' % (
+                      it, maxF, ginfo, count[0], lin_res,
+                      time.time() - tg), flush=True)
         if maxF < rtol * max(1.0, bnorm):
             break
     info['n_evals'] = n_evals

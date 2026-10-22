@@ -5,6 +5,7 @@ k = per-span-cell bound-vortex amplitudes (free); Kutta rows
 runs nonlinear transonic.
 """
 import numpy as np
+import os
 import sys
 sys.path.insert(0, 'D:\\CodeProjects\\cfd')
 from wing3d.geometry import build_wing
@@ -17,8 +18,9 @@ from scipy.optimize import newton_krylov
 
 def build_case(Minf, alpha_deg, linear, fullpot=False, box=None,
                nx=80, ny=32, nz=32, span=6.0, section=None):
+    te_gap = float(os.environ.get('WING3D_TE_GAP', '0.002'))
     mesh = build_wing('0012', span=span, chord=1.0, n_chord=24, n_span=12,
-                      section=section)
+                      section=section, te_gap=te_gap)
     wakes = build_wake_from_meta(mesh)
     A, Brow = assemble(mesh, wakes, kutta_mode='doublet')
     a = np.radians(alpha_deg)

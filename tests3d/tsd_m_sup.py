@@ -13,6 +13,7 @@ M1.1 CL=0.0533. AR6 should sit ABOVE the AR1.6 anchor (tip relief).
 """
 import numpy as np
 import sys
+import os
 sys.path.insert(0, 'D:\\CodeProjects\\cfd')
 sys.path.insert(0, 'D:\\CodeProjects\\cfd\\tests3d')
 from tsd_coupled import build_case
@@ -58,12 +59,23 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         if free_k:
             s.k[:] = y[nphi:]
         R = s.residual()
-        # out-flow face free (zero residual row), lateral/top/bottom free
-        R[-1, :, :] = 0
-        R[:, 0, :] = 0
-        R[:, -1, :] = 0
-        R[:, :, 0] = 0
-        R[:, :, -1] = 0
+        bc_rows = os.environ.get('WING3D_BC_ROWS', '') == '1'
+        if bc_rows:
+            # audit ablation: replace the rank-deficient zero rows with
+            # real farfield statements (Dirichlet 0 on lateral/top/bottom,
+            # linear extrapolation on the outflow plane).
+            R[-1, :, :] = s.phi[-1, :, :] - s.phi[-2, :, :]
+            R[:, 0, :] = s.phi[:, 0, :]
+            R[:, -1, :] = s.phi[:, -1, :]
+            R[:, :, 0] = s.phi[:, :, 0]
+            R[:, :, -1] = s.phi[:, :, -1]
+        else:
+            # out-flow face free (zero residual row), lateral/top/bottom free
+            R[-1, :, :] = 0
+            R[:, 0, :] = 0
+            R[:, -1, :] = 0
+            R[:, :, 0] = 0
+            R[:, :, -1] = 0
         R[0, :, :] = 0   # inflow pinned by unpack, no equation needed
         Rk = s.kutta_residual(upstream=2) * 10.0
         # only return the free DOF rows (inflow plane excluded)
