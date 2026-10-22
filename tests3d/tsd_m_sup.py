@@ -21,10 +21,12 @@ from scipy.optimize import newton_krylov
 
 
 def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
-            base=None, callback=None):
+            base=None, callback=None, alpha_deg=None):
     if base is None:
-        s, res, mesh = build_case(M, 1.25, False, True, None, 80, 32, 32,
-                                  span, section=section)
+        alpha_deg = float(os.environ.get('WING3D_ALPHA', '1.25')) \
+            if alpha_deg is None else float(alpha_deg)
+        s, res, mesh = build_case(M, alpha_deg, False, True, None, 80, 32,
+                                  32, span, section=section)
     else:
         # reuse a prebuilt state: panel/imprint is Mach-independent, only
         # the operator coefficients depend on Minf (read live in residual)
