@@ -2,7 +2,11 @@
 
 Protocol mirror of tests3d/validation/ctest_validate.py --suite flow:
   grid 80x32x32, ep 8 (WING3D_CTEST_EP), span from WING3D_TSD_SPAN
-  (ctest default 6.0; pass --span 1.6 for the campaign-matched pairing),
+  (DEFAULT 1.6 -- campaign-matched pairing. The old span-6.0 default is
+  RETIRED: at span 6.0 the solver sits on the degenerate negative-CL
+  branch -- dfvlr M0.85/0.925 give CL ~ -0.85, the audit's 'negative CL
+  degenerate branch, DO NOT USE'. Ladder runs MUST use span 1.6 so the
+  TSD is on the physical branch and comparable to A5's 3D RANS probes),
   alpha per target from published_refs.json. Knobs read from env exactly
   as ctest reads them:
     WING3D_FREE_K  '1' -> free-k closure (default fixed k=1)
@@ -25,7 +29,7 @@ before each solve (the OF container needs ~1.8-2.5 GB for its fine-band
 solve; one TSD solve at a time, cooperative).
 
 Usage:
-  python tests3d/tsd_ablate.py <tag> [--targets k1,k2] [--span 6.0]
+  python tests3d/tsd_ablate.py <tag> [--targets k1,k2] [--span 1.6]
     env: WING3D_FREE_K / WING3D_BC_ROWS / WING3D_TE_GAP / WING3D_ALPHA /
          WING3D_CTEST_EP / WING3D_ABLATE_RAM_GB
   Results: tests3d/validation/results/ablate_<tag>.json
@@ -101,7 +105,7 @@ def main():
     args = [a for a in sys.argv[1:]]
     tag = args[0] if args else 'ladder'
     targets = None
-    span = float(os.environ.get('WING3D_TSD_SPAN', '6.0'))
+    span = float(os.environ.get('WING3D_TSD_SPAN', '1.6'))
     i = 1
     while i < len(args):
         if args[i] == '--targets' and i + 1 < len(args):
