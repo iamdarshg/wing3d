@@ -240,11 +240,12 @@ python tests3d/cli_battery.py --jobs 3
 ## 9. Honest accounting
 
 - Euler only (no boundary layer): CD is pressure + wave drag only.
-- Mach labeling (all OF cases): the inflow speed is built as U∞ = M_label·a_ref
-  with a_ref = √(γ p∞/ρ∞) = 353.06 m/s (p∞ = 1e5 Pa, ρ∞ = 1.1231) while the
-  inflow temperature is T∞ = 300 K, so the thermodynamic freestream Mach is
-  ≈ 1.017·M_label. The identical construction backs every OF row (old corpus
-  and fills), so cross-row comparisons are unaffected.
+- Mach labeling (all OF cases): the corpus runs nitrogen (molWeight
+  28.01348 → a(300 K) = 353.06 m/s) and the inflow speed is built as
+  U∞ = M_label × 353.0587, so the thermodynamic freestream Mach equals the
+  label to ≤0.3%. (An earlier note claimed ≈1.017·M_label — that used the
+  air sound speed 347.22 m/s and was a bookkeeping artifact; retracted
+  2026-10-22 with the container thermo verified.)
 - The "OF anchors" are the delivered slab configuration (symmetry walls),
   not free-flight AR1.6 — see §7.
 - The rae/dfvlr sections are the delivered aft-loaded variants, not

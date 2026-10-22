@@ -1,5 +1,16 @@
-"""Scope: how much of each cell's error is explained by the Mach-label
-convention (OF thermodynamic Mach = 1.01683 x label)?
+"""RETRACTED 2026-10-22 — DO NOT USE.
+
+This script's 1.01683 Mach-alignment factor is an air-vs-N2 bookkeeping
+artifact: the corpus runs nitrogen (molWeight 28.01348 → a(300 K) =
+353.06 m/s), which is exactly the a_ref used to build U∞
+(magUInf = M_label × 353.0587). The 347.2235 m/s "thermodynamic" value
+below is the AIR sound speed (R = 287.05) and does not describe these
+cases. Actual run Mach equals the label to ≤0.3%; every "aligned-M"
+delta produced by this script is a phantom-M shift and is void.
+
+Original docstring (kept for history): how much of each cell's error is
+explained by the Mach-label convention (OF thermodynamic Mach =
+1.01683 x label)?
 
 For each CONV cell: interp TSD CL at M*1.01683 (the Mach the OF row
 actually ran at), compare vs the same OF CL. Prints delta vs the current

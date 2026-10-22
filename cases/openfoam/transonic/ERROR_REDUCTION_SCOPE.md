@@ -46,7 +46,7 @@ rhoCentralFoam Euler slab, TSD = fixed-k imprint full-potential, span 1.6.
 | L3 | **TSD FD grid (+ box, + epochs)** | all (the "few %" for close cells) | study + g120ep16/g160ep16 confirmations **done** (4 geos, 8 runs: 6 g120ep16 + 2 g160ep16): rae +4.0% (stable), naca +12.5%, biconvex +12.8%, naca M0.95 +6.7%, naca M1.05 +12.9%, dfvlr −18.2% g120ep16 (was −7.3% at ep8 — the ep8 g120/g160 "agreement" was under-iteration), dfvlr g160ep16 −9.95% (still −1.0% in the last epoch), rae g160ep16 −17.45% (settled, 20.6% below g120), rae g140ep16 −20.97% (below both → supersonic-mask state selection, §4); rae g120ep24 0.25845 (+3.77%) — small-mask fixed point confirmed over 24 epochs; box inert ≤1.4% | done (ep24) | **the largest single lever: −21…+13% CL, sign per geo** |
 | L4 | **TSD estimator + imprint resolution** | all; dfvlr wobble | ep16 at g80 moves toward the fine-grid answer (naca +4.2%, dfvlr −3.5%); drift evidence §1.3 | folded into L3 study | ≤ ~4%; subsumed by L3 |
 | L5 | **OF scheme/refinement at the ceiling** | dfvlr +62…+276%; rae M1.0+ | refined-mesh dfvlr peak 0.2791 @ M0.900 (reconstructed 45.6k probe: 0.3627 @ M0.925); M0.925/M1.000 probe pair reproduced the corpus values **bit-exactly** → the corpus ceiling values are already refined-mesh (86k) runs (solver deterministic); a preserved 45.6k copy (`/dfvlr_coarse`, **not a campaign case**) failed checkMesh (**root-caused**: constant points = 59,360 with 49 strays; good 59,311 points in that scratch case's `0/polyMesh`) → lanes fixed + **reconstructed** coarse pair **complete to t=0.25**: CL 0.3626993 / 0.2529717 vs refined 0.2779525 / 0.2126116 = **+30.5% / +19.0%** | done | **resolution matters** — dfvlr anchors are mesh-sensitive, not mesh-converged; corpus never used the 45.6k mesh; scheme variant (L5-2) unstaged |
-| L6 | Mach-alignment accounting | all ±1.5 pp; dfvlr ±4.5 pp | aligned-M table (§1.2) | doc-only | not a fix; band note only |
+| L6 | Mach-alignment accounting | **retracted** — corpus runs N2, run Mach = label ≤0.3% | §1.2 (withdrawn table) | doc-only | no correction exists or is needed |
 
 ---
 
@@ -67,19 +67,21 @@ container `postProcessing/`; old era from `campaign/container_coeffs/*.coeff`,
 Conclusion: the corpus values are converged signals to ≪1 pp of CL; no
 averaging/noise reduction is available.
 
-### 1.2 Mach-label convention — quantified band, not fixable in-corpus
+### 1.2 Mach-label convention — RETRACTED (air-vs-N2 artifact)
 
-OF rows run at thermodynamic Mach = **1.01683 × label** (corpus a_ref =
-353.06 m/s vs a_thermo(T=300 K) = 347.22 m/s). Re-evaluating TSD CL at the
-aligned Mach (`tmp_machscope.py`) moves the error column by:
+Earlier claim: OF rows run at thermodynamic Mach = 1.01683 × label.
+**False.** The corpus runs nitrogen (`molWeight 28.01348`, R = 296.8
+J/kg/K), so a_N2(300 K) = √(1.4·296.8·300) = 353.06 m/s — exactly the
+a_ref used to build U∞ (`magUInf` = M_label × 353.0587; e.g. M0.850 →
+300.099). The 347.22 m/s "thermodynamic" sound speed hardcoded in
+`tests3d/scope_mach_align.py` is the AIR value (R = 287.05) and does not
+correspond to these cases. The actual run Mach equals the label to ≤0.3%
+on every row; the 1.51 pp mean / ±10 pp dfvlr "alignment deltas" are
+phantom-M shifts of a nearly M-flat TSD curve and are void.
 
-- all cells: mean |Δ| **1.51 pp**, max 10.3 pp;
-- rae: ≤ 0.7 pp except M1.00 **−6.8 pp** (31.9% → 25.2%);
-- dfvlr: mean |Δ| **4.47 pp**, wobbling both signs (−9.6 pp at 0.875,
-  +10.3 pp at 1.05 — alignment makes the worst cell *worse*).
-
-Corpus freestream convention is uniform across all OF rows; changing the
-labeling would not reduce errors systematically. Keep the §9 note.
+Consequence: no Mach correction is needed or applied; the aligned-M table
+is withdrawn. Verified 2026-10-22 against the delivered container cases
+(`constant/thermophysicalProperties`, `0/T` = 300, `.coeff` `magUInf`).
 
 ### 1.3 TSD epoch convergence — small cleanup only
 
