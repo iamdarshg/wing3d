@@ -480,3 +480,31 @@ reconfirmations), `tests3d/make_freetip_probe.py` (Probe A case generator),
 `tests3d/probe_naca_freetip_M085_*` (probe result + full force history). The
 force-history audit is reproducible from the container `postProcessing/`
 (all fills) and `campaign/container_coeffs/*.coeff` (old era).
+
+## 7. Performance and accuracy targets (north star, set 2026-10-22)
+
+Global goal — mirrored at `~/.config/opencode/AGENTS.md` and in AgentDB
+namespace `global-goals` (key `cfd-wing3d-north-star`):
+
+1. **Speed.** 3–5× faster than OpenFOAM per (geometry, M) at matched
+   accuracy.
+2. **Accuracy.** The TSD CL uncertainty bound, derived from our own
+   hyperparameters (grid family {80,120,140,160}, epochs {8,16,24},
+   supersonic-mask state small/large, k-imprint on/off), must lie
+   **within OpenFOAM's own uncertainty bound** — ideally centred on it.
+3. **Claim a bound, not a point.** Every deliverable reports CL ± band;
+   every ablation/sensitivity measurement feeds the bound.
+4. **Honesty rule.** Unsupportable fixes that help the score are logged as
+   BAD BUT HELPS with their measured cost; removals that lower error are
+   kept permanently.
+
+Status at set-date: neither side is inside the other yet. dfvlr shows the
+OF side's own bound is large — 86k branch CL 0.2780 vs coarse 0.3627 /
+fine 0.3629 at M0.925 (±13% about ~0.32) — while the TSD side spans
+0.4119–0.5036 across grid/epochs. Closing that overlap is the program, not
+a single number.
+
+Speed measurement in flight: the campaign TSD protocol (`g80x32x32 ep8`)
+is being timed per case; OpenFOAM reference is 2–4 h/solve at 86k and
+4 h07m at the fine 125k leg. The 3–5× target is evaluated at matched CL
+accuracy, not at the campaign's current settings.
