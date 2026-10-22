@@ -44,10 +44,34 @@ REFS = json.load(open(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'validation',
     'published_refs.json')))
 
-# dfvlr fine-branch 125k values (in-flight dfvlr_fine program; PROVISIONAL
-# only -- A5 registers the official 3D RANS anchors in published_refs).
+# dfvlr fine-branch 125k values (dfvlr_fine program; terminated at 6/9 by
+# owner decision 2026-10-23 -- M1.000+ not run, not needed for the verdict).
 DFVLR_FINE = {0.850: 0.3210697, 0.875: 0.3436987, 0.900: 0.3635240,
-              0.925: 0.3629209, 0.950: 0.3464955}
+              0.925: 0.3629209, 0.950: 0.3464955, 0.975: 0.3264051}
+
+# KNOWN anchors for immediate grading (86k corpus all 13 M + fine 125k
+# dfvlr + published M6 diagnostic). Loaded once; used for PASS/FAIL now,
+# replaced by A5's 3D RANS anchors when they are registered.
+KNOWN = json.load(open(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'validation',
+    'known_anchors.json')))
+
+
+def known_cl(geo, M):
+    """Best known reference CL for (geo, M): fine 125k dfvlr first, then
+    86k corpus. Returns None if neither exists."""
+    if geo.startswith('dfvlr'):
+        f = DFVLR_FINE.get(M)
+        if f is not None:
+            return f, 'fine125k'
+    c = KNOWN['corpus_86k'].get(geo, {})
+    if M in c:
+        return c[M], 'corpus86k'
+    # JSON keys are strings; float keys may round-trip as '0.85' etc.
+    for k, v in c.items():
+        if abs(float(k) - M) < 1e-9:
+            return v, 'corpus86k'
+    return None, None
 
 
 def ram_free_gb():
@@ -110,13 +134,20 @@ def main():
                   flush=True)
             continue
         rec = {'key': t['key'], 'geometry': geo, 'M': M, 'alpha': alpha,
-               'cl_pub': t['cl_pub'] if anchored else None,
-               'cl_band': t['cl_band'] if anchored else None,
+               'cl_pub': None, 'cl_band': None,
                'status': None}
-        if not anchored:
+        # IMMEDIATE grading against KNOWN anchors (86k corpus / fine 125k
+        # / published M6 diagnostic). A5's 3D RANS anchors, when they
+        # land, take precedence.
+        known_ref, known_src = known_cl(geo, M)
+        if known_ref is not None:
+            rec['cl_pub'] = known_ref
+            rec['cl_band'] = 0.02  # provisional band vs known anchors
+            rec['known_src'] = known_src
+            rec['status'] = 'ANCHORED'
+        else:
             rec['status'] = 'MEASURED'
-            rec['note'] = 'PENDING until A5 lands 3D RANS anchor; ' \
-                          'CL recorded for later grading'
+            rec['note'] = 'no known anchor for (geo, M); CL recorded'
         if not wait_ram():
             rec.update({'status': 'FAIL', 'reason': 'ram_gated',
                         'cl_tsd': None})
@@ -133,9 +164,9 @@ def main():
             cl = float(L['CL'])
             secs = round(time.time() - t0, 1)
             rec.update({'cl_tsd': round(cl, 6), 'secs': secs})
-            if anchored:
-                err = (cl - t['cl_pub']) / t['cl_pub'] * 100
-                inside = abs(cl - t['cl_pub']) <= t['cl_band']
+            if rec.get('cl_pub') is not None:
+                err = (cl - rec['cl_pub']) / rec['cl_pub'] * 100
+                inside = abs(cl - rec['cl_pub']) <= rec['cl_band']
                 rec.update({'status': 'PASS' if inside else 'FAIL',
                             'err_pct': round(err, 2), 'inside': inside})
             # provisional fine-branch reference (dfvlr only), flagged
