@@ -28,7 +28,13 @@ def build_profile(geo):
     from wing3d.tsd import section_profile_xy
     from gen_transonic_stl import (naca0012_xy, rae2822_xy,
                                    biconvex_xy, dfvlr_r4_xy)
-    if geo == 'naca0012':
+    # refs.json flow entries carry geometry tags (dfvlr_r4_true,
+    # onera_m6_sharp_te); map to the section generators that exist.
+    # M6 has NO 2D-section proxy by design (swept 3D wing, OF-side
+    # geometry) -- ctest keeps it PENDING, this never runs.
+    if geo in ('dfvlr_r4', 'dfvlr_r4_true'):
+        xu, yu, xl, yl = dfvlr_r4_xy()
+    elif geo == 'naca0012':
         xa, yt = naca0012_xy(n=400)
         xu, yu, xl, yl = xa, yt, xa, -yt
     elif geo == 'rae2822':
@@ -36,8 +42,10 @@ def build_profile(geo):
     elif geo == 'biconvex':
         xu, yu = biconvex_xy(n=400)
         xl, yl = xu.copy(), -yu
-    elif geo == 'dfvlr_r4':
-        xu, yu, xl, yl = dfvlr_r4_xy()
+    elif geo == 'onera_m6_sharp_te':
+        raise ValueError(
+            'onera_m6 has no TSD 2D-section proxy (swept 3D wing, '
+            'OF-side geometry); keep diagnostic/PENDING')
     else:
         raise ValueError(geo)
     xg = np.linspace(0, 1, 400)
@@ -55,6 +63,8 @@ def build_section(geo, n=24):
     from wing3d.geometry import section_loop
     from gen_transonic_stl import (naca0012_xy, rae2822_xy,
                                    biconvex_xy, dfvlr_r4_xy)
+    if geo in ('dfvlr_r4', 'dfvlr_r4_true'):
+        return section_loop(*dfvlr_r4_xy(), n)
     if geo == 'naca0012':
         xa, yt = naca0012_xy(n=400)
         return section_loop(xa, yt, xa, -yt, n)
@@ -63,8 +73,10 @@ def build_section(geo, n=24):
     if geo == 'biconvex':
         xb, yb = biconvex_xy(n=400)
         return section_loop(xb, yb, xb, -yb, n)
-    if geo == 'dfvlr_r4':
-        return section_loop(*dfvlr_r4_xy(), n)
+    if geo == 'onera_m6_sharp_te':
+        raise ValueError(
+            'onera_m6 has no TSD 2D-section proxy (swept 3D wing, '
+            'OF-side geometry); keep diagnostic/PENDING')
     raise ValueError(geo)
 
 

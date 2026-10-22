@@ -66,7 +66,8 @@ def main():
                    'secs': time.time() - t0, 'complete': False},
                   open(out, 'w'), indent=1)
 
-    L, xc, ix, j0 = run_sup(M, span=1.6, epochs=ep, free_k=False,
+    L, xc, ix, j0 = run_sup(M, span=1.6, epochs=ep,
+                            free_k=os.environ.get('WING3D_FREE_K', '') == '1',
                             profile=prof, section=sec, base=base,
                             callback=checkpoint)
     cl = float(L['CL'])

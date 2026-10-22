@@ -145,19 +145,25 @@ def run_tsd_on_stl(path, mach=0.9, alpha_deg=1.25, span=1.6, epochs=8,
     from wing3d.tsd import section_profile_xy
     from tsd_m_sup import run_sup
     from wing3d.transonic import m_crit, predict
-    from scipy.signal import savgol_filter
     mesh = read_stl(path)
     sec = extract_section(mesh, station=station)
     # bin-level slice noise (~1e-4 in z) must not leak into the wall BC,
     # whose camber/thickness SLOPES feed the solver directly (unsmoothed
-    # slopes shifted the transonic branch: CL 0.25 -> 0.16 at M0.85)
-    w = min(41, len(sec['x']) // 4 * 2 + 1)
-    yu_s = savgol_filter(sec['yu'], w, 3)
-    yl_s = savgol_filter(sec['yl'], w, 3)
-    # savgol edge handling extrapolates a polynomial (nose overshoot);
-    # pin the endpoints to the raw slice values instead
-    yu_s[0], yu_s[-1] = sec['yu'][0], sec['yu'][-1]
-    yl_s[0], yl_s[-1] = sec['yl'][0], sec['yl'][-1]
+    # slopes shifted the transonic branch: CL 0.25 -> 0.16 at M0.85).
+    # Ablation knob (audit 2026-10-22, savgol flagged SHAKY/tuned):
+    # WING3D_RAW_SECTION=1 -> raw slopes, no savgol.
+    if os.environ.get('WING3D_RAW_SECTION', '') == '1':
+        yu_s = np.array(sec['yu'])
+        yl_s = np.array(sec['yl'])
+    else:
+        from scipy.signal import savgol_filter
+        w = min(41, len(sec['x']) // 4 * 2 + 1)
+        yu_s = savgol_filter(sec['yu'], w, 3)
+        yl_s = savgol_filter(sec['yl'], w, 3)
+        # savgol edge handling extrapolates a polynomial (nose overshoot);
+        # pin the endpoints to the raw slice values instead
+        yu_s[0], yu_s[-1] = sec['yu'][0], sec['yu'][-1]
+        yl_s[0], yl_s[-1] = sec['yl'][0], sec['yl'][-1]
     prof = section_profile_xy(sec['x'], yu_s, yl_s)
     sec_loop = section_loop(sec['x'], yu_s, sec['x'], yl_s, 24)
     # campaign-validated path: fixed k=1 camber imprint + supersonic BCs.
