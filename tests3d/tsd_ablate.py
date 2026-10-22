@@ -92,7 +92,7 @@ def ram_free_gb():
 
 def wait_ram(min_gb=None, timeout_s=7200):
     if min_gb is None:
-        min_gb = float(os.environ.get('WING3D_ABLATE_RAM_GB', '2.5'))
+        min_gb = float(os.environ.get('WING3D_ABLATE_RAM_GB', '1.5'))
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         if ram_free_gb() >= min_gb:
