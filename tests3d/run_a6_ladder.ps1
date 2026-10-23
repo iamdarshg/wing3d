@@ -7,6 +7,11 @@ $env:WING3D_TSD_SPAN = '1.6'
 $env:WING3D_CTEST_EP = '8'
 
 function Invoke-Probe([string]$Tag, [string]$Mach, [hashtable]$Knobs) {
+    $out = "tests3d\validation\results\ablate_mp_${Tag}_M$Mach.json"
+    if (Test-Path $out) {
+        Write-Host "SKIP $Tag M$Mach (result exists: $out)"
+        return
+    }
     foreach ($key in @('WING3D_FREE_K', 'WING3D_BC_ROWS', 'WING3D_TE_GAP')) {
         Remove-Item "Env:$key" -ErrorAction SilentlyContinue
     }
@@ -27,8 +32,7 @@ foreach ($step in $steps) {
         Invoke-Probe $step.Tag $mach $step.Knobs
     }
 }
-if (-not $Only -or $Only -eq 'u3') {
-    Remove-Item Env:WING3D_RAW_SECTION -ErrorAction SilentlyContinue
-    & python tests3d/tsd_ablate_u3.py --mach 0.85 --epochs 8
-    if ($LASTEXITCODE -ne 0) { throw "U3 failed (exit $LASTEXITCODE)" }
-}
+if ($Only -and $Only -ne 'u3') { exit 0 }
+Remove-Item Env:WING3D_RAW_SECTION -ErrorAction SilentlyContinue
+& python tests3d/tsd_ablate_u3.py --mach 0.85 --epochs 8
+if ($LASTEXITCODE -ne 0) { throw "U3 failed (exit $LASTEXITCODE)" }
