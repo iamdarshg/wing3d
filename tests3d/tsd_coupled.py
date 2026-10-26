@@ -59,6 +59,13 @@ def build_case(Minf, alpha_deg, linear, fullpot=False, box=None,
         else:
             cl2 = 2.0 * np.pi * np.radians(alpha_deg)
         beta = max(np.sqrt(max(1.0 - Minf ** 2, 1e-6)), 0.3)
+        # Prandtl-Glauert is only valid below critical Mach. Above M_crit
+        # the shock bounds the lift growth (divergence), so freeze 1/beta
+        # at its M_crit value instead of letting it blow up (measured
+        # pathology: uncapped 1/beta drove CL +21/+54/+240% at M0.85/0.925/1.0).
+        mcrit = float(os.environ.get('WING3D_MCRIT', '0.72'))
+        beta_cap = np.sqrt(max(1.0 - mcrit ** 2, 1e-6))
+        beta = max(beta, beta_cap)
         cl2 = cl2 / beta
         AR = span / chord_l
         CL3 = cl2 * AR / (AR + 2.0)
