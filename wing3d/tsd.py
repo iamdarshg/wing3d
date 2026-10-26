@@ -33,6 +33,7 @@ Red-black SOR. Cp = -2 dphi/dx (consistent TSD order); wave drag comes
 out of pressure integration over the captured shock structure.
 """
 import numpy as np
+import os
 
 
 def _stretch(n, a, b, fine, r=1.25):
@@ -396,7 +397,14 @@ class TSDSolver:
         _kw = self.k[_wpos] if len(self.wing_jy) else np.ones(1)
         if len(self.wake_ix) and len(self.wake_jy) and k0 >= 1:
             WI, WJ = np.meshgrid(self.wake_ix, self.wake_jy, indexing='ij')
-            _g = self.wake_scale * _kw[None, :] * self.wake_G[WJ]
+            # muw (wake_G) is circulation PER UNIT SPAN gamma(y)
+            # (CL = 2*int(gamma)dy/span, see tests3d/diag_camber.py).
+            # The branch-cut potential jump is the SPAN-CELL circulation
+            # Gamma = gamma*dy[j]; omitting dy makes the jump span-scaling
+            # wrong (measured: CL flips sign as span grows at M0.3).
+            _dyj = self.dy[WJ] if os.environ.get(
+                'WING3D_JUMP_DYW', '1') == '1' else 1.0
+            _g = self.wake_scale * _kw[None, :] * self.wake_G[WJ] * _dyj
             if getattr(self, '_circff', None) is not None:
                 # TSFOIL-style: wake jump interpolated TE -> farfield
                 # (box consistency as Gamma evolves)
@@ -405,7 +413,9 @@ class TSDSolver:
                     self.x[-1] - self.chord, 1e-9), 0.0, 1.0)[:, None]
                 gff = self._circff[np.clip(
                     WJ, 0, len(self._circff) - 1)]
-                _g = (1 - t) * _g + t * self.wake_scale * gff
+                _g = (1 - t) * _g + t * self.wake_scale * gff * (
+                    self.dy[WJ] if os.environ.get('WING3D_JUMP_DYW',
+                                                  '1') == '1' else 1.0)
             phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * _g
                                        / self.dz[k0 - 1])
         if self.bound_ramp and len(self.wing_ix) and len(self.wing_jy) \
@@ -419,8 +429,11 @@ class TSDSolver:
                 xc = np.clip(self.xc[self.wing_ix] / self.chord, 0.0, 1.0)
                 ramp = xc[:, None]  # 0 at LE -> 1 at TE
                 jump = ramp * self.wake_G[BJ]
+            _dyw = self.dy[BJ] if os.environ.get('WING3D_JUMP_DYW',
+                                                 '1') == '1' else 1.0
             phiz_f[BI, BJ, k0 - 1] -= (self.wake_sign * self.wake_scale
-                                       * self.k[BK] * jump / self.dz[k0 - 1])
+                                       * self.k[BK] * jump * _dyw
+                                       / self.dz[k0 - 1])
         wz = np.empty(nz)
         wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
         wz[0] = dz[0]

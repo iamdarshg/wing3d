@@ -26,7 +26,8 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         alpha_deg = float(os.environ.get('WING3D_ALPHA', '1.25')) \
             if alpha_deg is None else float(alpha_deg)
         s, res, mesh = build_case(M, alpha_deg, False, True, None, 80, 32,
-                                  32, span, section=section)
+                                  32, span, section=section,
+                                  profile=profile)
     else:
         # reuse a prebuilt state: panel/imprint is Mach-independent, only
         # the operator coefficients depend on Minf (read live in residual)
