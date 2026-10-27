@@ -70,3 +70,30 @@ The dfvlr fine band was terminated at M0.975, so M1.00 is only the 86k
 corpus value (0.2126). The 86k branch runs **~28% low** vs fine at every
 measured point (fine/86k = 1.20–1.33). Corrected M1.00 fine estimate ≈ 0.272
 → our +46% becomes ≈ +14%. The real M1.00 error is probably ~14%, not 46%.
+
+## 6. UPDATE 2026-10-28 — the dy multiplier was itself the bug
+
+muw is already Gamma_2D (the repo's own CL = 2*int(muw dy)/span proves it),
+so multiplying the branch-cut jump by dy double-counted the span. Reverted
+(WING3D_JUMP_DYW default 0). With LL imprint + PG cap at the campaign config
+(span 1.6, g80x32x32 ep8):
+
+| M | before | now | anchor |
+|---|---|---|---|
+| 0.850 | +45.0% | **-4.0%** | fine 125k 0.3210697 |
+| 0.925 | +35.5% | **-11.9%** | fine 125k 0.3629209 |
+| 1.000 | +137.8% | **+54.1%** | 86k corpus 0.2126116 (SUSPECT, ~28% low) |
+
+Mean |err|: 72.8% -> 23.3%. With the M1.0 anchor corrected by the measured
+fine/86k ratio (1.28), the M1.0 error becomes ~+20% and the mean ~12%.
+
+Remaining knowledge gaps:
+- The transpiration-driven lift still grows with span (CL 0.31@AR1.6 ->
+  0.55@AR6 -> 0.99@AR20 at M0.85), which is unphysical; the campaign happens
+  to sit at AR1.6 where the result is good, so this must be resolved before
+  any span extrapolation is trusted.
+- The bound-vortex jump is active but ~30x oversized (||dR|| 1655 at scale 100
+  vs base residual 18) and destabilises the solve, so circulation still is not
+  the lift carrier; the Kutta rewrite remains open.
+- Fine M1.000 anchor: resumed from t=0.06 (container, ~4h) to replace the
+  suspect 86k value.
