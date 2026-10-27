@@ -43,8 +43,23 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
     # strip panel imprints that lock the subsonic circulation:
     # keep wing_jump (ramp shape) since free-k proved unstable, but
     # force new BCs
-    s.farfield = None
-    s.phi[:] = 0.0
+    # NOTE: s.farfield=None forces phi=0 on the whole outer box, which
+    # forbids circulation (lift then comes only from transpiration and
+    # cannot lose lift transonically). WING3D_FARFIELD=wake keeps the
+    # wake-consistent lifting farfield computed by build_case.
+    if os.environ.get('WING3D_FARFIELD', 'off') == 'wake':
+        s.phi[:] = 0.0
+        F = s.farfield
+        if F is not None:
+            s.phi[0, :, :] = F[0, :, :]
+            s.phi[-1, :, :] = F[-1, :, :]
+            s.phi[:, 0, :] = F[:, 0, :]
+            s.phi[:, -1, :] = F[:, -1, :]
+            s.phi[:, :, 0] = F[:, :, 0]
+            s.phi[:, :, -1] = F[:, :, -1]
+    else:
+        s.farfield = None
+        s.phi[:] = 0.0
     s.k[:] = 1.0
     nx, ny, nz = s.nx, s.ny, s.nz
     nphi = (nx - 1) * ny * nz   # interior + outflow face (inflow excluded)
