@@ -403,7 +403,7 @@ class TSDSolver:
             # Gamma = gamma*dy[j]; omitting dy makes the jump span-scaling
             # wrong (measured: CL flips sign as span grows at M0.3).
             _dyj = self.dy[WJ] if os.environ.get(
-                'WING3D_JUMP_DYW', '1') == '1' else 1.0
+                'WING3D_JUMP_DYW', '0') == '1' else 1.0
             _g = self.wake_scale * _kw[None, :] * self.wake_G[WJ] * _dyj
             if getattr(self, '_circff', None) is not None:
                 # TSFOIL-style: wake jump interpolated TE -> farfield
@@ -430,7 +430,7 @@ class TSDSolver:
                 ramp = xc[:, None]  # 0 at LE -> 1 at TE
                 jump = ramp * self.wake_G[BJ]
             _dyw = self.dy[BJ] if os.environ.get('WING3D_JUMP_DYW',
-                                                 '1') == '1' else 1.0
+                                                 '0') == '1' else 1.0
             _js = float(os.environ.get('WING3D_JUMP_SCALE', '1'))
             phiz_f[BI, BJ, k0 - 1] -= (self.wake_sign * self.wake_scale
                                        * self.k[BK] * jump * _dyw * _js
