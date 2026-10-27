@@ -431,8 +431,9 @@ class TSDSolver:
                 jump = ramp * self.wake_G[BJ]
             _dyw = self.dy[BJ] if os.environ.get('WING3D_JUMP_DYW',
                                                  '1') == '1' else 1.0
+            _js = float(os.environ.get('WING3D_JUMP_SCALE', '1'))
             phiz_f[BI, BJ, k0 - 1] -= (self.wake_sign * self.wake_scale
-                                       * self.k[BK] * jump * _dyw
+                                       * self.k[BK] * jump * _dyw * _js
                                        / self.dz[k0 - 1])
         wz = np.empty(nz)
         wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
