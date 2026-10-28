@@ -1361,20 +1361,23 @@ class TSDSolver:
         solver), so this is a REUSE of the same Biot-Savart source, not a
         new singular integral.
 
-        Geometry: chordwise panel edges at the midpoints between control
-        stations (LE edge = 0, TE edge = chord), span edges at the
-        midpoints between span stations (tips at +-span/2); control
-        points are the stations themselves. Each panel is subdivided
-        (WING3D_KUTTA_KERNEL_SUBX/SUBY) so that the LINEAR interpolation
-        of the station values -- which is what the field actually puts on
-        the cut (`_residual`: np.interp over x_ctrl) -- is represented as
-        the stack of constant doublet sub-panels it is. That makes the
-        matrix exact for the discretisation the field sees, rather than
-        for a different one.
+        Geometry: chordwise cells between control STATIONS (cell i spans
+        [x_{i-1}, x_i], LE edge = 0), so the cell's unknown loading
+        Gamma_i = mu_i - mu_{i-1} sits on the chord it actually covers;
+        span cells are centred on a station (edges at the midpoints, tips
+        at +-span/2). One horseshoe per cell: bound filament at the 1/4
+        chord, legs trailing downstream, control point at the 3/4 chord
+        (classical 1/4-3/4). The trailed wake is therefore inside the
+        kernel, so the downwash it produces is part of the tangency
+        equation.
 
-        The wake is a doublet sheet trailing from the TE with the TE value
-        of mu (Helmholtz), so its influence is LINEAR in mu as well: its
-        column sums fold into the TE rows of mu, and D stays (nc*ng)^2.
+        MEASURED alternatives (both rejected, numbers in
+        tests3d/a12_kutta_report.md): a constant-doublet panel reaching
+        x=0 puts the whole mu(0.043c) jump on the LE edge and reads
+        +0.41*alpha at the LE row (the exact solution needs -alpha); a
+        sub-panel stack (SUBX>1) does not converge, because the doublet
+        kernel is 1/r^2 on the sheet and a midpoint stack of constant
+        sub-panels gives +22*alpha mid-chord instead of -alpha.
         """
         xs = np.asarray(self.x_ctrl, dtype=float) * self.chord
         ys = np.asarray(self.yc[np.asarray(self.wing_jy)], dtype=float)
