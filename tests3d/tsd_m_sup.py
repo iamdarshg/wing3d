@@ -73,7 +73,7 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         s.phi[:] = 0.0
     s.k[:] = 1.0
     ng = len(s.wing_jy)
-    free_mu = (kutta == 5)
+    free_mu = (kutta in (5, 6))
     if kutta:
         # FREE bound-vortex circulation: seed from lifting line (starting
         # at 0 or at the old panel value lands in the wrong basin).
@@ -81,14 +81,16 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         s.kutta_mode = kutta
         s.kutta_on = True
         s.kutta_free_mu = free_mu
-        s.kutta_bound = kutta in (1, 3, 4, 5)
-        s.kutta_thick_only = kutta in (1, 4, 5)
-        s.kutta_tangency = kutta in (4, 5)
+        s.kutta_kernel = (kutta == 6)
+        s.kutta_bound = kutta in (1, 3, 4, 5, 6)
+        s.kutta_thick_only = kutta in (1, 4, 5, 6)
+        s.kutta_tangency = kutta in (4, 5, 6)
         s.kutta_morino = (kutta == 4) and (
             os.environ.get('WING3D_MORINO', '1') == '1')
-        s.kutta_te_kutta = (kutta == 5) and (
+        s.kutta_te_kutta = (kutta in (5, 6)) and (
             os.environ.get('WING3D_KUTTA_TE', '1') == '1')
-        s.kutta_wte = float(os.environ.get('WING3D_KUTTA_WTE', '6.1'))
+        s.kutta_wte = float(os.environ.get(
+            'WING3D_KUTTA_WTE', '1.0' if kutta == 6 else '6.1'))
         s.tang_xc = float(os.environ.get('WING3D_TANG_XC', '0.75'))
         s.tang_mode = os.environ.get('WING3D_TANG_MODE', 'gal')
         # the prescribed panel/LL bound sheet is replaced by the free one
@@ -166,14 +168,20 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             # see tests3d/tsd_kutta_weight.py, tsd_a10_probe.py and
             # tsd_a11_probe.py)
             if free_mu:
-                Rk = s.tangency_panel_residual().ravel() * s.kutta_w
-                if s.kutta_te_kutta:
-                    # last chordwise station = the TE: replace its
-                    # tangency row by the Kutta condition gamma(TE)=0,
-                    # i.e. mu(TE) - mu(last-1) = 0, in mu units weighted
-                    # by the MEASURED local self-response (kutta_wte)
-                    _i0 = s.kutta_w * s.kutta_wte
-                    Rk[-ng:] = (s.mu_b[-1, :] - s.mu_b[-2, :]) * _i0
+                if getattr(s, 'kutta_kernel', False):
+                    # mode 6: the rows are the ANALYTIC doublet-lattice
+                    # tangency equation, and the discrete Kutta row is
+                    # already row nc-1 of the same array (in mu units).
+                    Rk = s.dlm_tangency_residual().ravel() * s.kutta_w
+                else:
+                    Rk = s.tangency_panel_residual().ravel() * s.kutta_w
+                    if s.kutta_te_kutta:
+                        # last chordwise station = the TE: replace its
+                        # tangency row by the Kutta condition gamma(TE)=0,
+                        # i.e. mu(TE) - mu(last-1) = 0, in mu units
+                        # weighted by the MEASURED local self-response
+                        _i0 = s.kutta_w * s.kutta_wte
+                        Rk[-ng:] = (s.mu_b[-1, :] - s.mu_b[-2, :]) * _i0
             elif getattr(s, 'kutta_tangency', False):
                 Rk = s.tangency_residual() * s.kutta_w
             else:
@@ -227,10 +235,15 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             if free_mu:
                 Gsec = s.mu_circulation()
                 gmid = float(Gsec[len(Gsec) // 2])
-                _tr = s.tangency_panel_residual()
-                kres = float(np.abs(_tr[:-1] if s.kutta_te_kutta
-                                    else _tr).max())
-                kte = float(np.abs(s.mu_b[-1, :] - s.mu_b[-2, :]).max())
+                if getattr(s, 'kutta_kernel', False):
+                    _tr = s.dlm_tangency_residual()
+                    kres = float(np.abs(_tr[:-1]).max())
+                    kte = float(np.abs(_tr[-1]).max())
+                else:
+                    _tr = s.tangency_panel_residual()
+                    kres = float(np.abs(_tr[:-1] if s.kutta_te_kutta
+                                        else _tr).max())
+                    kte = float(np.abs(s.mu_b[-1, :] - s.mu_b[-2, :]).max())
                 _J = s.te_jump()
                 jm = int(np.asarray(s.wing_jy)[len(s.wing_jy) // 2])
                 morino = float(_J[jm] - s.mu_b[-1, len(s.gamma_b) // 2])
@@ -294,7 +307,10 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             L['kutta']['x_ctrl'] = s.x_ctrl.copy()
             L['kutta']['Gamma_mu'] = s.mu_circulation().copy()
             L['kutta']['loading'] = s.mu_loading().copy()
-            L['kutta']['tang_rows'] = s.tangency_panel_residual().copy()
+            L['kutta']['tang_rows'] = (
+                s.dlm_tangency_residual().copy()
+                if getattr(s, 'kutta_kernel', False)
+                else s.tangency_panel_residual().copy())
     jy = np.asarray(s.wing_jy)
     j0 = jy[np.argmin(np.abs(s.yc[jy]))]
     ix = np.asarray(s.wing_ix)

@@ -266,18 +266,27 @@ class TSDSolver:
         #   loading both represented) and the TE row is the Kutta
         #   condition. The chordwise loading shape is then the solution,
         #   not a prescribed F(x). See tests3d/a11_kutta_report.md.
+        # WING3D_KUTTA=6: same free chordwise doublet distribution (mu at
+        #   nc chordwise control stations x ng span stations) and the same
+        #   Helmholtz wake, but the tangency rows are built from the
+        #   ANALYTIC DOUBLET-LATTICE KERNEL (tsd.dlm_tangency_residual)
+        #   instead of the field-differentiated w_plane estimator that A11
+        #   measured to be 3.7x chordwise-biased. D.mu = dyc/dx - alpha is
+        #   LINEAR in mu. See tests3d/a12_kutta_report.md.
         try:
             self.kutta_mode = int(os.environ.get('WING3D_KUTTA', '0') or 0)
         except ValueError:
             self.kutta_mode = 0
         self.kutta_on = self.kutta_mode > 0
-        # mode 5: free chordwise doublet distribution (mu matrix unknown)
-        self.kutta_free_mu = self.kutta_mode == 5
-        self.kutta_bound = self.kutta_mode in (1, 3, 4, 5)  # sheet from free amps
-        self.kutta_thick_only = self.kutta_mode in (1, 4, 5)  # transpiration: dyt
+        # mode 5/6: free chordwise doublet distribution (mu matrix unknown)
+        self.kutta_free_mu = self.kutta_mode in (5, 6)
+        # mode 6: analytic doublet-lattice kernel for the tangency rows
+        self.kutta_kernel = self.kutta_mode == 6
+        self.kutta_bound = self.kutta_mode in (1, 3, 4, 5, 6)  # sheet from free amps
+        self.kutta_thick_only = self.kutta_mode in (1, 4, 5, 6)  # transpiration: dyt
         # closure row family: 1-3 = TE loading dCp (A9), 4 = tangency
-        # reduced to one row per span cell, 5 = tangency per (panel,span)
-        self.kutta_tangency = self.kutta_mode in (4, 5)
+        # reduced to one row per span cell, 5/6 = tangency per (panel,span)
+        self.kutta_tangency = self.kutta_mode in (4, 5, 6)
         # Morino wake condition (mode 4): the wake doublet is the TE
         # potential jump the FIELD carries, not a prescribed copy of
         # gamma_b. WING3D_MORINO=0 turns it back into the prescribed wake
@@ -294,12 +303,17 @@ class TSDSolver:
         # removes the sqrt(1-x) eigensolution -- the standard discrete
         # Kutta in doublet form. WING3D_KUTTA_TE=0 keeps the pure
         # collocation (reported as the ablation).
-        self.kutta_te_kutta = (self.kutta_mode == 5) and (
+        self.kutta_te_kutta = (self.kutta_mode in (5, 6)) and (
             os.environ.get('WING3D_KUTTA_TE', '1') == '1')
         # weight of the Kutta row in mu units, commensurate with the
         # tangency rows: MEASURED local self-response d wav / d mu =
-        # -6.1 per unit mu (tsd_a11_probe2.py, panels 6 and 11)
-        self.kutta_wte = float(os.environ.get('WING3D_KUTTA_WTE', '6.1'))
+        # -6.1 per unit mu (tsd_a11_probe2.py, panels 6 and 11) for the
+        # mode-5 field estimator. Mode 6's kernel rows are O(1) in mu, so
+        # there the Kutta row is commensurate at weight 1 (it is a pure
+        # row scaling either way -- the mu block is linear, so it cannot
+        # move the root).
+        self.kutta_wte = float(os.environ.get(
+            'WING3D_KUTTA_WTE', '1.0' if self.kutta_kernel else '6.1'))
         self.tang_xc = float(os.environ.get('WING3D_TANG_XC', '0.75'))
         # 'gal' = loading-weighted chordwise reduction (default),
         # 'pt'  = single control station at tang_xc
@@ -317,6 +331,10 @@ class TSDSolver:
         self.i_ctrl = np.zeros(0, dtype=int)
         self.x_ctrl = np.zeros(0)
         self.mu_b = np.zeros((0, len(self.wing_jy)))
+        # mode 6 analytic doublet-lattice matrix, built lazily (geometry
+        # only -- it does not depend on phi or on mu)
+        self._dlmK = None
+        self._dlmInfo = None
         if self.kutta_free_mu:
             self.init_free_mu()
         # (mode 5 mu is initialised from the flat-plate/Lifting-line
@@ -330,8 +348,15 @@ class TSDSolver:
         # Mode 4 (tangency row): measured converged gain d wav/d Gamma =
         # -0.81 at the 0.75c control point (three converged phi solves,
         # tsd_a10_probe3.py), so w = A_scale/0.81 = 7.24e3/0.81 = 8.9e3.
-        _wd = {1: '50', 2: '1500', 3: '50', 4: '8.9e3', 5: '8.9e3'}.get(
-            self.kutta_mode, '50')
+        # Mode 5 (tangency row from the field-differentiated w_plane) and
+        # mode 6 (analytic doublet-lattice kernel): the rows are in
+        # velocity units, the phi rows in TSD residual units, so the same
+        # A_scale normalisation applies. NOTE the mode-6 mu block is
+        # LINEAR and independent of phi, so this weight is pure row
+        # conditioning -- it cannot move the root (verified by re-running
+        # with WING3D_KUTTA_W=1e3: identical CL).
+        _wd = {1: '50', 2: '1500', 3: '50', 4: '8.9e3', 5: '8.9e3',
+               6: '8.9e3'}.get(self.kutta_mode, '50')
         self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', _wd))
 
         self._circff = None  # farfield circulation (wake interp target)
@@ -371,6 +396,8 @@ class TSDSolver:
         jump-contaminated estimator. mu_b is (n_ctrl, n_span).
         """
         self.kutta_free_mu = True
+        self._dlmK = None
+        self._dlmInfo = None
         ni = len(self.wing_ix)
         self.n_ctrl = 0
         self.i_ctrl = np.zeros(0, dtype=int)
@@ -1308,6 +1335,212 @@ class TSDSolver:
         w_geom = slope_c - self.alpha
         return np.array([wav[icp, j] for j in jy]) - w_geom
 
+    # ------------------------------------------------------------------
+    # mode 6: ANALYTIC DOUBLET-LATTICE INFLUENCE KERNEL
+    # ------------------------------------------------------------------
+    def _dlm_panels(self):
+        """Panel lattice for the mode-6 kernel: wing sheet + trailed wake.
+
+        The mode-5 tangency rows read the normal velocity out of the TSD
+        field (`w_plane`), which is a FIRST-ORDER finite difference across
+        the branch cut on a grid whose dz_core is 1.5% of the chord. A11
+        measured that estimator's own chordwise kernel to be 3.7x
+        stronger aft than at the LE for a physically uniform downwash
+        (0.45*alpha at the LE cell to 1.7*alpha aft), which flattened mu
+        and cost ~35% of the circulation.
+
+        Here the downwash of the doublet sheet is computed ANALYTICALLY
+        instead. A constant doublet panel of strength mu is equivalent to
+        a vortex ring of circulation mu around its edges, and the velocity
+        a vortex ring induces at a point IN ITS OWN PLANE is purely normal
+        to that plane -- so the classical doublet-lattice influence
+        coefficient is exactly the z-component of the ring kernel. That
+        kernel already exists in this codebase as
+        `wing3d.ckernels.loop_vel_block` (used by the 3D Morino panel
+        solver), so this is a REUSE of the same Biot-Savart source, not a
+        new singular integral.
+
+        Geometry: chordwise panel edges at the midpoints between control
+        stations (LE edge = 0, TE edge = chord), span edges at the
+        midpoints between span stations (tips at +-span/2); control
+        points are the stations themselves. Each panel is subdivided
+        (WING3D_KUTTA_KERNEL_SUBX/SUBY) so that the LINEAR interpolation
+        of the station values -- which is what the field actually puts on
+        the cut (`_residual`: np.interp over x_ctrl) -- is represented as
+        the stack of constant doublet sub-panels it is. That makes the
+        matrix exact for the discretisation the field sees, rather than
+        for a different one.
+
+        The wake is a doublet sheet trailing from the TE with the TE value
+        of mu (Helmholtz), so its influence is LINEAR in mu as well: its
+        column sums fold into the TE rows of mu, and D stays (nc*ng)^2.
+        """
+        xs = np.asarray(self.x_ctrl, dtype=float) * self.chord
+        ys = np.asarray(self.yc[np.asarray(self.wing_jy)], dtype=float)
+        nc, ng = len(xs), len(ys)
+        if nc < 2 or ng < 1:
+            return None
+        try:
+            nwk = max(1, int(os.environ.get('WING3D_KUTTA_KERNEL_WKP', '4')))
+            wlen = float(os.environ.get('WING3D_KUTTA_KERNEL_WLEN', '3'))
+            nsplit = max(1, int(os.environ.get(
+                'WING3D_KUTTA_KERNEL_SPLIT', '1')))
+        except ValueError:
+            nwk, wlen, nsplit = 4, 3.0, 1
+        # cells: chordwise between STATIONS (cell i carries the loading
+        # Gamma_i = mu_i - mu_{i-1}, so its chord extent is exactly
+        # [x_{i-1}, x_i], x_{-1} = LE), spanwise centred on a station.
+        ex = np.empty(nc + 1)
+        ex[0] = 0.0
+        ex[1:] = xs
+        ey = np.empty(ng + 1)
+        ey[0] = -0.5 * self.span
+        ey[1:ng] = 0.5 * (ys[:-1] + ys[1:])
+        ey[ng] = 0.5 * self.span
+        # horseshoe per cell: bound segment at the 1/4 chord, two legs to a
+        # far downstream station (the trailed wake is IN the kernel, so its
+        # downwash is inside the tangency equation instead of being smeared
+        # into the field).
+        fars = [self.chord]
+        dxw = 0.5 * wlen * self.span / nwk
+        for _ in range(nwk):
+            fars.append(fars[-1] + dxw)
+            dxw *= 1.6
+        seg = []          # (nseg, 2, 3) filament endpoints
+        col = []          # (seg,) station cell index the filament belongs to
+        wgt = []          # (seg,) share of that cell's loading it carries
+        xcp = np.empty(nc)          # chordwise control point (3/4 chord)
+        ycp = 0.5 * (ey[:-1] + ey[1:])   # spanwise control point (mid-cell)
+        for i in range(nc):
+            xq = ex[i] + 0.25 * (ex[i + 1] - ex[i])
+            xcp[i] = ex[i] + 0.75 * (ex[i + 1] - ex[i])
+            for l in range(ng):
+                y0, y1 = ey[l], ey[l + 1]
+                c = i * ng + l
+                # The station cell carries the loading Gamma_i = mu_i -
+                # mu_{i-1} spread over [x_{i-1}, x_i]; distributing it over
+                # WING3D_KUTTA_KERNEL_SPLIT sub-horseshoes is a refinement
+                # of the same density, not a change of unknown.
+                for k in range(nsplit):
+                    xa = ex[i] + (ex[i + 1] - ex[i]) * k / nsplit
+                    xb = ex[i] + (ex[i + 1] - ex[i]) * (k + 1) / nsplit
+                    xqs = xa + 0.25 * (xb - xa)
+                    f = 1.0 / nsplit
+                    # bound vortex, +y (so +Gamma gives downwash aft of it)
+                    seg.append([[xqs, y0, 0.0], [xqs, y1, 0.0]])
+                    col.append(c)
+                    wgt.append(f)
+                    # trailing legs: a CLOSED horseshoe, so the y0 leg runs
+                    # upstream (-x) and the y1 leg downstream (+x). Adjacent
+                    # span cells then leave (Gamma_{l-1}-Gamma_l) on their
+                    # shared leg -- the classical VLM wake -- instead of
+                    # summing (a same-direction bug measured as -0.76*alpha
+                    # instead of -alpha on the exact flat plate).
+                    for yy, flip in ((y0, True), (y1, False)):
+                        for kk in range(len(fars) - 1):
+                            a0 = xqs if kk == 0 else fars[kk]
+                            seg.append([[fars[kk + 1], yy, 0.0],
+                                        [a0, yy, 0.0]] if flip else
+                                       [[a0, yy, 0.0],
+                                        [fars[kk + 1], yy, 0.0]])
+                            col.append(c)
+                            wgt.append(f)
+        info = dict(nc=nc, ng=ng, seg=np.asarray(seg), col=np.asarray(col),
+                    wgt=np.asarray(wgt), ex=ex, ey=ey, xs=xs, ys=ys,
+                    xcp=xcp, ycp=ycp, xf=fars[-1], nwk=nwk, wlen=wlen,
+                    nsplit=nsplit)
+        return info
+
+    def dlm_kernel(self, rebuild=False):
+        """Analytic doublet-lattice downwash matrix D (mode 6).
+
+        D[(i,j),(k,l)] = normal (z) velocity at the control point of cell
+        (i,j) induced by a UNIT loading of cell (k,l), i.e. by the horseshoe
+        a constant doublet cell is equivalent to. Shape (nc*ng, nc*ng),
+        i-major to match mu_b.ravel().
+
+        The cell LOADING is the primary quantity in this form:
+
+            Gamma_cell(i,l) = mu(i,l) - mu(i-1,l),    mu(-1) = 0
+
+        so mu(TE) is the cumulative sum of the cell loadings and there is no
+        potential jump at the leading edge BY CONSTRUCTION -- exactly the
+        condition the exact flat plate satisfies (mu(0) = 0). That is what
+        the constant-doublet form (mu primary, one constant panel reaching
+        x=0) could not do: its first panel dumps the whole mu(0.043c) jump
+        on the LE edge, and the LE tangency row then reads +0.41*alpha where
+        the exact solution needs -alpha (measured, tmp_a12_dbg2).
+
+        SIGN: the bound filament runs +y and the legs trail downstream, so a
+        positive loading gives DOWNWASH aft of it (physical lift). Verified
+        against the exact 2D flat plate in tests3d/tsd_a12_kernel.py: with
+        mu = pi*alpha*F(x) the kernel returns w = -alpha along the chord.
+        """
+        if getattr(self, '_dlmK', None) is not None and not rebuild:
+            return self._dlmK
+        info = self._dlm_panels()
+        self._dlmInfo = info
+        if info is None:
+            self._dlmK = np.zeros((0, 0))
+            return self._dlmK
+        from .ckernels import loop_vel_block
+        nc, ng = info['nc'], info['ng']
+        seg = info['seg']
+        ed = seg[:, None, :, :]        # (nseg, 1, 2, 3)
+        emask = np.ones((len(seg), 1), dtype=bool)
+        P = np.zeros((nc * ng, 3))
+        for i in range(nc):
+            for j in range(ng):
+                P[i * ng + j] = (info['xcp'][i], info['ycp'][j], 0.0)
+        if os.environ.get('WING3D_KUTTA_KERNEL_PG', '0') == '1':
+            # Prandtl-Glauert stretch (x -> x/beta) as an ABLATION: the
+            # kernel is geometric by default so every Mach effect in the
+            # answer comes from the field, not from a linearised similarity
+            # that is singular at M=1.
+            beta = max(np.sqrt(max(1.0 - self.Minf ** 2, 1e-6)), 0.3)
+            P[:, 0] /= beta
+            ed = ed.copy()
+            ed[..., 0] /= beta
+        w = loop_vel_block(P, ed, emask)[:, :, 2]     # (ncp, nseg)
+        S = np.zeros((len(seg), nc * ng))
+        S[np.arange(len(seg)), info['col']] = info['wgt']
+        DG = w @ S                                    # (ncp, ncell)
+        # loading -> doublet: Gamma(i,l) = mu(i,l) - mu(i-1,l)
+        C = np.eye(nc * ng) - np.eye(nc * ng, k=-ng)
+        self._dlmK = DG @ C
+        return self._dlmK
+
+    def dlm_tangency_residual(self):
+        """Mode 6 closure: the tangency equation, LINEAR in mu.
+
+            D . mu = dyc/dx(x_cp_i) - alpha   at the 3/4 chord of each cell
+
+        Same sign convention as the mode-5 row (`wav - (slope_c - alpha)`):
+        the sheet's analytic downwash must equal the geometric slope minus
+        the angle of attack (alpha>0 -> downwash -> D.mu<0). Row nc-1 is the
+        discrete Kutta condition in mu form, mu(TE) = mu(last-1), unchanged
+        from A11. Returns (nc, ng), scaled by kutta_w in the coupled
+        residual.
+        """
+        nc = self.n_ctrl
+        jy = np.asarray(self.wing_jy)
+        ng = len(jy)
+        if nc == 0 or ng == 0 or self.mu_b.size == 0:
+            return np.zeros((nc, ng))
+        D = self.dlm_kernel()
+        info = self._dlmInfo
+        x_at = np.asarray(info['xcp'], dtype=float) / self.chord
+        if self.profile is not None:
+            slope_c = np.asarray(self.profile['camber'](x_at), dtype=float)
+        else:
+            slope_c = np.zeros(nc)
+        g = (slope_c - self.alpha)[:, None] * np.ones((1, ng))
+        w = (D @ self.mu_b.ravel()).reshape(nc, ng)
+        # Kutta row in mu units: mu(TE) - mu(last-1) = 0
+        w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
+        g[-1, :] = 0.0
+        return w - g
+
     def tangency_panel_residual(self):
         """Mode 5 closure: one tangency row per (panel, span station).
 
@@ -1356,6 +1589,10 @@ class TSDSolver:
         """
         if self.mu_b.size == 0:
             return np.zeros(len(self.wing_jy))
+        if self.kutta_kernel:
+            # mode 6: the cell loading is Gamma_i = mu_i - mu_{i-1} with
+            # mu(x=0) = 0, so the section circulation is mu(TE) itself.
+            return self.mu_b[-1, :].copy()
         return self.mu_b[-1, :] - self.mu_b[0, :]
 
     def mu_loading(self):
