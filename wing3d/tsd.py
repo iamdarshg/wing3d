@@ -353,8 +353,9 @@ class TSDSolver:
         # velocity units, the phi rows in TSD residual units, so the same
         # A_scale normalisation applies. NOTE the mode-6 mu block is
         # LINEAR and independent of phi, so this weight is pure row
-        # conditioning -- it cannot move the root (verified by re-running
-        # with WING3D_KUTTA_W=1e3: identical CL).
+        # conditioning and cannot move the root: kutta_w multiplies both
+        # the mu rows and the Kutta row of the same linear block, so it
+        # scales rows of a system whose solution is unchanged.
         _wd = {1: '50', 2: '1500', 3: '50', 4: '8.9e3', 5: '8.9e3',
                6: '8.9e3'}.get(self.kutta_mode, '50')
         self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', _wd))
@@ -1536,9 +1537,10 @@ class TSDSolver:
             slope_c = np.zeros(nc)
         g = (slope_c - self.alpha)[:, None] * np.ones((1, ng))
         w = (D @ self.mu_b.ravel()).reshape(nc, ng)
-        # Kutta row in mu units: mu(TE) - mu(last-1) = 0
-        w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
-        g[-1, :] = 0.0
+        if self.kutta_te_kutta:
+            # Kutta row in mu units: mu(TE) - mu(last-1) = 0
+            w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
+            g[-1, :] = 0.0
         return w - g
 
     def tangency_panel_residual(self):
