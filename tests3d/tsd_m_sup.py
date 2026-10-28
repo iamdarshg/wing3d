@@ -53,7 +53,12 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
     # so the wake farfield is the default there.
     ff = os.environ.get('WING3D_FARFIELD', 'wake' if kutta else 'off')
     if ff == 'wake':
-        s.phi[:] = 0.0
+        if not kutta:
+            s.phi[:] = 0.0
+        # kutta mode KEEPS the build_case interior (the lifting-line
+        # imprint state, consistent with Gamma0): the task's own warning
+        # is that starting from phi=0 lands in the wrong basin, and it
+        # does -- measured, Gamma walked from +0.041 to -0.009.
         F = s.farfield
         if F is not None:
             s.phi[0, :, :] = F[0, :, :]
