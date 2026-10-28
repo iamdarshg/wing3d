@@ -249,7 +249,30 @@ class TSDSolver:
         q2 = np.minimum(np.maximum(q2, 0.0), q2max)
         rho = (1 + 0.5 * (gm - 1) * self.Minf ** 2 * (1 - q2)) ** (
             1 / (gm - 1))
-        return np.maximum(rho, 0.2)
+        rho = np.maximum(rho, 0.2)
+        # ---- non-isentropic (entropy) correction -------------------
+        # Potential flow is irrotational, so it cannot carry the entropy
+        # (and hence vorticity) produced by a shock.  Add the dominant
+        # rotational effect: downstream of a shock the total pressure has
+        # dropped, so the density is lower than the isentropic value.
+        # Detection is streamwise (x) since the wing is x-aligned:
+        # track the running max Mach; where the local Mach has fallen
+        # below it (i.e. the flow has passed a shock) apply the normal
+        # shock total-pressure ratio p02/p01 evaluated at that peak Mach.
+        if os.environ.get('WING3D_ENTROPY', '0') == '1':
+            a2 = np.maximum(rho, 1e-9) ** (gm - 1)
+            M2 = q2 * self.Minf ** 2 / a2
+            M2max = np.maximum.accumulate(M2, axis=0)
+            shocked = (M2max > 1.0) & (M2 < 0.98 * M2max)
+            Mm = np.sqrt(np.maximum(M2max, 1.0))
+            num = (gm + 1.0) * Mm ** 2
+            den = (gm - 1.0) * Mm ** 2 + 2.0
+            p02 = (num / den) ** (gm / (gm - 1.0)) * (
+                (gm + 1.0) / (2.0 * gm * Mm ** 2 - (gm - 1.0))
+            ) ** (1.0 / (gm - 1.0))
+            fac = np.where(shocked, p02, 1.0)
+            rho = rho * fac ** (1.0 / gm)
+        return rho
 
     def _xflux(self, phi, dx):
         """x-face fluxes + linearization coefficient + supersonic mask.
