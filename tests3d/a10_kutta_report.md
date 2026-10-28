@@ -1,13 +1,15 @@
 # A10 — tangency row + Morino wake condition: what it measures
 
 Status: **the closure row is now LIVE in both phi and Gamma (unlike A9's
-dCp(TE), it has an O(1) converged gain and a non-uniform spanwise gain),
-and for a symmetric section it converges to an elliptic loading. But its
-amplitude is set by a chordwise REDUCTION that the formulation does not
-contain: one equation per span cell cannot represent the chordwise
-tangency problem, and the two defensible reductions of it differ by a
-factor of −2.3 in sign.** Numbers below; nothing tuned (alpha 1.25°,
-Re, transition, grid, coefficients all fixed).
+dCp(TE), it has an O(1) converged gain and a non-uniform spanwise gain).
+On an uncambered section it converges to a physical, stable, elliptic
+loading: Gamma 0.0366 (90% of Gamma_LL), CL 0.0556 vs the 0.0545
+reference. On a cambered section the amplitude is set by a chordwise
+REDUCTION that the formulation does not contain: one equation per span
+cell cannot represent the chordwise tangency problem, and the two
+defensible reductions of it differ by a factor of −2.3 in sign.**
+Numbers below; nothing tuned (alpha 1.25°, Re, transition, grid,
+coefficients all fixed).
 
 Gates: `WING3D_KUTTA=4` (this work), `WING3D_MORINO=1` (Morino wake
 condition, default on for mode 4), `WING3D_TANG_MODE=pt|gal` (chordwise
@@ -50,6 +52,11 @@ gains from three phi solves at gamma = 0, 1.0, 1.5 Gamma_LL
 |---|---|---|
 | pt (0.75c) | −1.155 −0.959 −0.856 −0.822 −0.834 −0.907 −1.052 | 7.24e3/0.82 = **8.0e3** |
 | gal | −0.815 −0.699 −0.635 −0.614 −0.620 −0.664 −0.747 | 7.24e3/0.62 = **1.09e4** |
+
+(The ladder runs below used w = 8.9e3, the pt-row value, which was the
+number available when they started; the gal row's own measured weight is
+1.09e4. A 22% row weight changes the Newton conditioning only, not the
+root — the residual histories confirm it, tangency 4e-12 at w=8.9e3.)
 
 The gain is O(1) (A9's was 1.18e2 *only* because dCp(TE) was dominated by
 the spurious jump gradient) and it is **non-uniform in span (tips 1.16 vs
