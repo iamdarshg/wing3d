@@ -25,7 +25,7 @@ REPO = 'D:\\CodeProjects\\cfd'
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, 'tests3d'))
 
-ANCHORS = {'0.85': 0.3210697, '0.925': 0.3629209, '1.0': 0.3037588}
+ANCHORS = {'0.850': 0.3210697, '0.925': 0.3629209, '1.000': 0.3037588}
 OUT = os.path.join(REPO, 'tests3d')
 
 

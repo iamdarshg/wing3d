@@ -1,0 +1,15 @@
+{
+ "geo": "dfvlr_r4",
+ "M": 0.85,
+ "grid": "80x32x32",
+ "epochs": 4,
+ "span": 1.6,
+ "mode": "0",
+ "entropy": "1",
+ "bl": "0",
+ "free_k": true,
+ "profile": true,
+ "CL": 0.038791402110757135,
+ "secs": 243.97033834457397,
+ "note": "free_k (legacy k-sheet)"
+}
