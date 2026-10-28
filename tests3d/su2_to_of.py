@@ -61,10 +61,18 @@ def parse_su2(path):
     return pts, elems, markers
 
 
-# VTK/SU2 hexahedron faces (outward normals)
+# VTK/SU2 element faces (outward normals).  hcf_wing igrid_type=4 emits a
+# prism/hex mix, so hex-only support leaves whole cells facing nothing.
 HEX_FACES = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
              (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+TET_FACES = [(0, 2, 1), (0, 1, 3), (1, 2, 3), (0, 3, 2)]
+PRISM_FACES = [(0, 1, 2), (3, 5, 4), (0, 3, 4, 1), (1, 4, 5, 2),
+               (2, 5, 3, 0)]
+PYRAMID_FACES = [(0, 3, 2, 1), (0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)]
 QUAD_FACES = [(0, 1, 2, 3)]
+
+ELEM_FACES = {10: TET_FACES, 12: HEX_FACES, 13: PRISM_FACES,
+              14: PYRAMID_FACES, 9: QUAD_FACES, 5: [(0, 1, 2)]}
 
 
 def patch_type(tag):
@@ -97,11 +105,19 @@ def convert(su2_path, case_dir):
     owner = []
     neigh = []
     bnd_face_tag = []
+    n_degen = 0
 
     def add_face(vs, cell, key):
+        nonlocal n_degen
+        # guard: a face with repeated vertices is degenerate (collapsed
+        # pole / zero-thickness symmetry layer).  Adding it would collide
+        # with another face of the same cell and leave the cell illegal.
+        if len(set(vs)) < len(vs):
+            n_degen += 1
+            return
         if key in face_id:
             fi = face_id[key]
-            if len(neigh) > fi and neigh[fi] == -1:
+            if neigh[fi] == -1 and owner[fi] != cell:
                 neigh[fi] = cell
             return
         fi = len(faces)
@@ -112,16 +128,30 @@ def convert(su2_path, case_dir):
         bnd_face_tag.append(None)
 
     for cell, (typ, nodes) in enumerate(elems):
-        if typ != 12:
+        fdef = ELEM_FACES.get(typ)
+        if fdef is None:
             continue
-        for f in HEX_FACES:
+        for f in fdef:
             vs = tuple(nodes[j] for j in f)
             add_face(vs, cell, tuple(sorted(vs)))
 
     # boundary faces: those with neighbour == -1
     n_bound = sum(1 for x in neigh if x == -1)
-    print('faces %d, interior %d, boundary %d'
-          % (len(faces), len(faces) - n_bound, n_bound))
+    print('faces %d, interior %d, boundary %d, degenerate faces skipped %d'
+          % (len(faces), len(faces) - n_bound, n_bound, n_degen))
+
+    # how many cells ended up with fewer than 6 faces?
+    per_cell = defaultdict(int)
+    for fi in range(len(faces)):
+        per_cell[owner[fi]] += 1
+        if neigh[fi] != -1:
+            per_cell[neigh[fi]] += 1
+    bad = [c for c in range(len(elems)) if per_cell.get(c, 0) < 6]
+    if bad:
+        from collections import Counter
+        hist = Counter(per_cell.get(c, 0) for c in bad)
+        print('WARNING cells with <6 faces: %d  (face-count histogram %s)'
+              % (len(bad), dict(hist)))
 
     patches = defaultdict(list)
     for fi, nb in enumerate(neigh):

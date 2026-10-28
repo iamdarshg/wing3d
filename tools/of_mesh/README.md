@@ -118,3 +118,43 @@ Corrected facts:
   plane (zero-thickness first layer). Needs a degeneracy guard: skip faces
   whose sorted key already exists but with a different vertex multiset, and
   drop zero-area quads before deduplication.
+
+## Update 2026-10-28 (later): mixed elements + tip variants
+
+* `tests3d/su2_to_of.py` now handles **tets/prisms/pyramids as well as
+  hexes**. That was the cause of the "3072 illegal cells": those cells are
+  prisms/hex-mixed (igrid_type=4), and a hex-only converter left them with
+  no faces at all. With mixed support, face counts are correct
+  (370560 faces, 6912 boundary = 1920+3072+1920 exactly matching markers).
+* The SU2 route and the PLOT3D route give the SAME checkMesh numbers, so
+  the poor quality is a property of the generated grid, not the reader.
+
+### Grid quality matrix (all after successful conversion)
+
+| config | cells | max aspect | max skew | faces >70 deg | checkMesh |
+|---|---|---|---|---|---|
+| M6, round tip, structured | 122880 | 212769 | 183.1 | 19738 | FAIL 2 |
+| NACA0012, round tip, structured | 122880 | 212770 | 183.1 | 19738 | FAIL 3 |
+| NACA0012, blunt tip, structured | 245760 | 17184 | 92.3 | 54272 | FAIL 2 |
+
+Blunt tip fixes aspect/skew by ~12x but doubles the non-orthogonal face
+count. rhoSimpleFoam aborts at iteration ~6 on all of them: pressure runs
+to -950 kPa in a single cell (janaf inversion), i.e. one irreducibly bad
+cell region rather than gradual divergence.
+
+### What is NOT the problem (verified)
+* not the reader (two independent readers agree)
+* not negative volumes (cell volumes OK)
+* not the patch naming/BC set (all patches covered, correct types)
+* not the thermo file (identical to the working campaign case)
+
+### Recommended next steps (in order)
+1. Tune the generator for orthogonality: larger `nre`, smaller
+   `stretching_tanh_towards_lete`, larger `R_outer` (M6 reference uses
+   R_outer=100, nr_gs=8, nre=64). The production TMR grids are known good;
+   our parameterisation is not.
+2. If tuning stalls: switch to **pyHyp** (MDO Lab), which extrudes a
+   hyperbolic O-grid from a surface mesh with explicit orthogonality
+   control, and export CGNS -> OpenFOAM.
+3. For 2D checks only: `airfoilgmesher` (Gmsh) is the fast route to a clean
+   airfoil mesh to validate the solver against CL=0.352.
