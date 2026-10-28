@@ -16,6 +16,44 @@ from scipy.spatial import cKDTree
 from scipy.optimize import newton_krylov
 
 
+def lifting_line_gamma(alpha_deg, Minf, span, chord=1.0, profile=None,
+                       y=None):
+    """Prandtl lifting line: per-unit-span circulation gamma(y).
+
+    cl_2D = thin-airfoil(alpha, camber)/beta (Prandtl-Glauert, beta
+    frozen at M_crit: above M_crit the shock bounds the lift growth),
+    CL_3D = cl_2D * AR/(AR+2) (elliptic), gamma(y) =
+    (2 CL_3D/pi) * sqrt(1-(2y/b)^2). Unit freestream, chord `chord`.
+    This is the Mach-independent physical imprint AND the initial
+    guess for the free bound circulation (WING3D_KUTTA=1).
+    Returns gamma at stations `y`, or (y_grid, gamma_grid) if y is None.
+    """
+    prof_p = profile
+    if prof_p is not None:
+        xcp = np.linspace(1e-4, 1 - 1e-4, 401)
+        th = np.arccos(1.0 - 2.0 * xcp)
+        dz = prof_p['camber'](xcp)
+        A0 = np.radians(alpha_deg) - np.trapezoid(dz, th) / np.pi
+        A1 = 2.0 * np.trapezoid(dz * np.cos(th), th) / np.pi
+        cl2 = 2.0 * np.pi * (A0 + 0.5 * A1)
+    else:
+        cl2 = 2.0 * np.pi * np.radians(alpha_deg)
+    beta = max(np.sqrt(max(1.0 - Minf ** 2, 1e-6)), 0.3)
+    mcrit = float(os.environ.get('WING3D_MCRIT', '0.72'))
+    beta_cap = np.sqrt(max(1.0 - mcrit ** 2, 1e-6))
+    beta = max(beta, beta_cap)
+    cl2 = cl2 / beta
+    AR = span / chord
+    CL3 = cl2 * AR / (AR + 2.0)
+    b = span
+    yg = np.linspace(-0.5 * b, 0.5 * b, 65)
+    shape = np.sqrt(np.maximum(0.0, 1.0 - (2.0 * yg / b) ** 2))
+    gam = (2.0 * CL3 / np.pi) * shape
+    if y is None:
+        return yg, gam
+    return np.interp(np.asarray(y, dtype=float), yg, gam)
+
+
 def build_case(Minf, alpha_deg, linear, fullpot=False, box=None,
                nx=80, ny=32, nz=32, span=6.0, section=None, profile=None):
     te_gap = float(os.environ.get('WING3D_TE_GAP', '0.002'))
@@ -39,40 +77,13 @@ def build_case(Minf, alpha_deg, linear, fullpot=False, box=None,
     # 2D-like circulation at every span (measured: CLp = +0.63 / -7.50 /
     # -1.28 at span 1.6/3.2/6.0, M0.85 a1.25; truncated-SVD leaves CL~0,
     # so the physical lift is not even in the well-conditioned subspace).
-    # For a finite wing we instead use Prandtl lifting line:
-    #   cl_2D  = thin-airfoil(alpha, camber) / beta      (Prandtl-Glauert)
-    #   CL_3D  = cl_2D * AR/(AR+2)                       (elliptic)
-    #   gamma(y) = (2 CL_3D/pi) * sqrt(1-(2y/b)^2)        (per unit span)
-    # Both wake_G and wing_jump are then PER-UNIT-SPAN gamma(y); the
-    # residual multiplies by the span-cell width dy (WING3D_JUMP_DYW).
+    # For a finite wing we instead use Prandtl lifting line (see
+    # lifting_line_gamma above; same function seeds the free-kutta
+    # initial guess so the two cannot drift apart).
     imprint = os.environ.get('WING3D_IMPRINT', 'panel')
     if imprint == 'll':
-        chord_l = 1.0
-        prof_p = profile
-        if prof_p is not None:
-            xcp = np.linspace(1e-4, 1 - 1e-4, 401)
-            th = np.arccos(1.0 - 2.0 * xcp)
-            dz = prof_p['camber'](xcp)
-            A0 = np.radians(alpha_deg) - np.trapezoid(dz, th) / np.pi
-            A1 = 2.0 * np.trapezoid(dz * np.cos(th), th) / np.pi
-            cl2 = 2.0 * np.pi * (A0 + 0.5 * A1)
-        else:
-            cl2 = 2.0 * np.pi * np.radians(alpha_deg)
-        beta = max(np.sqrt(max(1.0 - Minf ** 2, 1e-6)), 0.3)
-        # Prandtl-Glauert is only valid below critical Mach. Above M_crit
-        # the shock bounds the lift growth (divergence), so freeze 1/beta
-        # at its M_crit value instead of letting it blow up (measured
-        # pathology: uncapped 1/beta drove CL +21/+54/+240% at M0.85/0.925/1.0).
-        mcrit = float(os.environ.get('WING3D_MCRIT', '0.72'))
-        beta_cap = np.sqrt(max(1.0 - mcrit ** 2, 1e-6))
-        beta = max(beta, beta_cap)
-        cl2 = cl2 / beta
-        AR = span / chord_l
-        CL3 = cl2 * AR / (AR + 2.0)
-        b = span
-        yg = np.linspace(-b / 2.0, b / 2.0, 65)
-        shape = np.sqrt(np.maximum(0.0, 1.0 - (2.0 * yg / b) ** 2))
-        gam = (2.0 * CL3 / np.pi) * shape
+        yg, gam = lifting_line_gamma(alpha_deg, Minf, span, chord=1.0,
+                                     profile=profile)
         g = {'y': yg, 'gamma': gam}
     s = TSDSolver(Minf=Minf, alpha_deg=alpha_deg, nx=nx, ny=ny, nz=nz,
                   omega=0.8, wake_gamma=g, linear=linear,
@@ -92,7 +103,7 @@ def build_case(Minf, alpha_deg, linear, fullpot=False, box=None,
     if imprint == 'll':
         # same units as g['gamma']: per-unit-span gamma(y) * chordwise ramp
         gam_y = np.interp(yc, g['y'], g['gamma'])
-        s.wing_jump = (xc / chord_l)[:, None] * gam_y[None, :]
+        s.wing_jump = (xc / 1.0)[:, None] * gam_y[None, :]
     s.farfield = tsd_farfield_box(s, wakes_long, np.array(res['muw']))
     F = s.farfield
     s.phi[0, :, :] = F[0, :, :]

@@ -90,6 +90,22 @@ def thickness_slope(xc, t=0.12):
     return d
 
 
+def flat_plate_jump(xc):
+    """Cumulative flat-plate loading, int_0^x A(t) dt.
+
+    A(x) = (2/pi) sqrt((1-x)/x) is the thin-airfoil (flat plate)
+    vortex strength, normalised so int_0^1 A dx = 1: the sheet
+    amplitude Gamma then IS the total section circulation, and
+    dF/dx = A is the classic LE-singular loading. F is the POTENTIAL
+    JUMP across the bound sheet (the quantity the branch cut carries),
+    so it must be the integral, with F(0)=0 (no jump at the LE) and
+    F(1)=1 (the TE jump equals the trailed wake jump: Kutta/Helmholtz).
+    Closed form: (2/pi)[sqrt(x(1-x)) + arcsin(sqrt(x))].
+    """
+    x = np.clip(np.asarray(xc, dtype=float), 0.0, 1.0)
+    return (2.0 / np.pi) * (np.sqrt(x * (1.0 - x)) + np.arcsin(np.sqrt(x)))
+
+
 def section_profile_xy(x, y_up, y_lo, n=400):
     """Build slope/thickness interpolants from an arbitrary airfoil.
 
@@ -207,7 +223,33 @@ class TSDSolver:
         # scaling the (fixed-shape) wing jump + wake Gamma. Solved with
         # phi via Kutta rows (TE dCp = 0). k=1 reproduces prescribed.
         self.k = np.ones(len(self.wing_jy))
-        self.kutta_w = 1.0  # Kutta-row weight in extended residual
+        # ---- FREE bound circulation closed by Kutta (WING3D_KUTTA=1) --
+        # gamma_b[j] = per-unit-span circulation at wing span station j,
+        # an UNKNOWN of the coupled system. It enters as the potential
+        # jump F(x)*gamma_b[j] on the wing (F = cumulative flat-plate
+        # loading, 0 at LE -> 1 at TE) and continues unchanged down the
+        # wake (Helmholtz), and the lifting camber/alpha transpiration is
+        # dropped from _apply_wing_bc so the circulation carries ALL the
+        # lift. Closed by the Kutta rows kutta_residual(upstream=2) = 0
+        # (TE dCp per span station), added to the residual in
+        # tests3d/tsd_m_sup.run_sup.
+        # NOTE the name: gamma_b, NOT Gamma -- self.gamma is the ratio
+        # of specific heats and a case-collision here would be silent.
+        # WING3D_KUTTA=1: transpiration = thickness only, bound sheet
+        #   F(x)*Gamma covers the chord, wake trails Gamma  (task spec)
+        # WING3D_KUTTA=2: transpiration keeps alpha+camber (the tangency
+        #   condition IS the lifting problem), NO bound sheet, the wake
+        #   sheet carries the free Gamma (classical TSD/TSFOIL wake).
+        try:
+            self.kutta_mode = int(os.environ.get('WING3D_KUTTA', '0') or 0)
+        except ValueError:
+            self.kutta_mode = 0
+        self.kutta_on = self.kutta_mode > 0
+        self.kutta_bound = self.kutta_mode == 1
+        self.gamma_b = np.zeros(len(self.wing_jy))
+        # Kutta-row weight, measured against the phi-row Jacobian scale
+        # (see tests3d/tsd_kutta_weight.py -- not an arbitrary 10).
+        self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', '50'))
         self._circff = None  # farfield circulation (wake interp target)
         self._frozenRho = None  # frozen face density (fullpot epochs)
         # frozen NODAL density (fullpot epochs). Without this the epoch
@@ -432,6 +474,13 @@ class TSDSolver:
                         0, max(len(self.wing_jy) - 1, 0))
         _kw = self.k[_wpos] if len(self.wing_jy) else np.ones(1)
         if len(self.wake_ix) and len(self.wake_jy) and k0 >= 1:
+            if self.kutta_on:
+                # free circulation: the wake sheet trails exactly the TE
+                # value of the bound sheet (Helmholtz), constant in x --
+                # no farfield (_circff) blending, which would re-pin it.
+                self.wake_G = np.interp(
+                    self.yc, self.yc[np.asarray(self.wing_jy)],
+                    self.gamma_b, left=0.0, right=0.0)
             WI, WJ = np.meshgrid(self.wake_ix, self.wake_jy, indexing='ij')
             # muw (wake_G) is circulation PER UNIT SPAN gamma(y)
             # (CL = 2*int(gamma)dy/span, see tests3d/diag_camber.py).
@@ -441,7 +490,8 @@ class TSDSolver:
             _dyj = self.dy[WJ] if os.environ.get(
                 'WING3D_JUMP_DYW', '0') == '1' else 1.0
             _g = self.wake_scale * _kw[None, :] * self.wake_G[WJ] * _dyj
-            if getattr(self, '_circff', None) is not None:
+            if getattr(self, '_circff', None) is not None \
+                    and not self.kutta_on:
                 # TSFOIL-style: wake jump interpolated TE -> farfield
                 # (box consistency as Gamma evolves)
                 xw = self.xc[self.wake_ix]
@@ -454,15 +504,19 @@ class TSDSolver:
                                                   '1') == '1' else 1.0)
             phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * _g
                                        / self.dz[k0 - 1])
-        if self.bound_ramp and len(self.wing_ix) and len(self.wing_jy) \
-                and k0 >= 1:
+        if (self.bound_ramp or self.kutta_bound) and len(self.wing_ix) \
+                and len(self.wing_jy) and k0 >= 1:
             BI, BJ = np.meshgrid(self.wing_ix, self.wing_jy, indexing='ij')
             BK = np.tile(np.arange(len(self.wing_jy)),
                          (len(self.wing_ix), 1))
-            if self.wing_jump is not None:
+            xc = np.clip(self.xc[self.wing_ix] / self.chord, 0.0, 1.0)
+            if self.kutta_bound:
+                # free bound vortex: potential jump = F(x)*gamma_b(y),
+                # F(0)=0 at the LE, F(1)=1 at the TE (= the wake jump).
+                jump = flat_plate_jump(xc)[:, None] * self.gamma_b[None, :]
+            elif self.wing_jump is not None:
                 jump = np.asarray(self.wing_jump)
             else:
-                xc = np.clip(self.xc[self.wing_ix] / self.chord, 0.0, 1.0)
                 ramp = xc[:, None]  # 0 at LE -> 1 at TE
                 jump = ramp * self.wake_G[BJ]
             _dyw = self.dy[BJ] if os.environ.get('WING3D_JUMP_DYW',
@@ -516,8 +570,19 @@ class TSDSolver:
             slope_c = np.zeros_like(slope_t)
         # NOTE: no cap here (cap kills LE suction); Newton-Krylov handles
         # the stiff LE source robustly where SOR blew up.
-        wu = slope_t + slope_c - self.alpha
-        wl = -slope_t + slope_c - self.alpha
+        if self.kutta_bound:
+            # FREE-CIRCULATION MODE 1 (thickness-only tangency):
+            # transpiration is the THICKNESS problem only (+dyt/dx upper,
+            # -dyt/dx lower). The lifting problem (camber + alpha) is
+            # carried entirely by the bound vortex sheet gamma_b and
+            # selected by the Kutta condition. Keeping `slope_c - alpha`
+            # here would prescribe part of the lift outside the
+            # circulation and make it unreducible.
+            wu = slope_t
+            wl = -slope_t
+        else:
+            wu = slope_t + slope_c - self.alpha
+            wl = -slope_t + slope_c - self.alpha
         if self.bl_on and self.bl_dstar_u is not None:
             # Viscous-inviscid coupling: the displacement surface thickens
             # the effective body, y_s = y_c +- y_t +- delta*(x). The extra
