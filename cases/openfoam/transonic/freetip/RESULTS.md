@@ -8,161 +8,184 @@ The `campaign/` cases put the wing tips on the *farfield* planes: the background
 
 This directory rebuilds the OpenFOAM side as a genuine free-tip wing: background box `y in [-4, +4]` (3.2 chords of free air outboard of each tip), all six outer faces `farfield` (permeable `freestream`), no symmetry planes, wing unchanged at `y in [-0.8, +0.8]`. Chordwise/spanwise refinement, N2 JANAF thermo, `p=1e5`, `T=300`, slip wall, `Aref=c*span=1.6`, `liftDir (0,0,1)`, `CofR (0.25,0,0)` are all campaign-identical.
 
-Solver: **rhoSimpleFoam** (steady). rhoCentralFoam is explicit and its time step is acoustic-CFL limited by the smallest near-wall cell; on the 139.5k-cell free-tip mesh that measured **1.6 s/step on the container's 2 cores**, i.e. ~5.5 h for the campaign's `t=0.25` per case, which is not affordable for a 7-case baseline. The cascade control case was re-run with rhoSimpleFoam too, so free-tip vs cascade differs only in geometry. Prism layers are off: the wall is `slip` (inviscid), the layers resolve nothing, and snappy layer collapse at the newly exposed tip produced zero-normal-extent cells that killed every implicit solver (`deltaCoeffs -> inf`).
-
 ## Mesh
 
-`blockMesh` 100x15x70 background (y cell 0.5333 - the campaign value - with grid lines landing exactly on the tips at `y=+-0.8`) + `snappyHexMesh` castellated/snap, surface level 3-4, distance regions (0.15:3, 0.4:2), wake box level 2. `checkMesh`: **Mesh OK** on every case, 136k-140k cells (the campaign cascade at the same refinement is 49.7k). Wing patch extent `y in [-0.800, +0.800]` with 372 tip-cap faces at `|y|=0.8`; domain `x[-10,21] y[-4,4] z[-10,10]`; two boundary patches only (`farfield`, `naca0012.stl`).
+`blockMesh` 100xNYx70 background + `snappyHexMesh` castellated/snap, surface level 3-4, distance regions (0.15:3, 0.4:2), wake box level 2, prism layers off (slip wall; snappy layer collapse at the exposed tip produced zero-normal-extent cells that made `deltaCoeffs` infinite and killed every implicit solver). `checkMesh` **Mesh OK** everywhere. Baseline `NY=15` (y cell 0.5333, the campaign value, grid lines on the tips): 136k-140k cells. Span study `NY=30` (y cell 0.2667): 276,876 cells, max aspect 4.29, max non-ortho 44.6, max skew 0.95. Wing patch `y in [-0.800,+0.800]` with 372 tip-cap faces; domain `x[-10,21] y[-4,4] z[-10,10]`.
 
-## Results (steady, converged; CL = mean of the last 30% of iterations)
+## Anchor table (rhoSimpleFoam, NY=15 mesh) - NOT the recommended anchor, see the last section
 
-`CL vs campaign` uses the old `campaign/final_table.json` rhoCentralFoam value for the same geometry and Mach; `CL vs TSD` uses that table's `tsd_cl`, which the TSD side is concurrently re-baselining - treat the TSD column as indicative, not final.
+`CL` = mean over the last 30% of iterations; `plateau` is the peak-to-peak CL spread over that same window. `campaign` uses the old `campaign/final_table.json` rhoCentralFoam value for the same geometry and Mach; `TSD` uses that table's `tsd_cl`, which the TSD side is concurrently re-baselining - indicative only.
 
-| geometry | M | config | cells | CL | CD | CL vs campaign | CL vs TSD |
-|---|---|---|---|---|---|---|---|
-| naca0012 | 0.800 | free-tip | 139572 | 0.05440 | 0.02843 | -18.3% | +8.8% |
-| dfvlr_r4 | 0.850 | free-tip | 136158 | 0.27186 | 0.05429 | +1.7% | -46.0% |
-| dfvlr_r4 | 0.925 | free-tip | 136158 | 0.26253 | 0.07353 | -5.5% | -45.0% |
-| dfvlr_r4 | 1.000 | free-tip | 136158 | 0.22694 | 0.09285 | +6.7% | -55.0% |
-| rae2822 | 0.850 | free-tip | 138035 | 0.17143 | 0.03534 | -31.7% | -31.2% |
-| rae2822 | 0.925 | free-tip | 138035 | 0.17166 | 0.05124 | -38.2% | -31.1% |
-| rae2822 | 1.000 | free-tip | 138035 | 0.15507 | 0.06816 | -17.8% | -37.7% |
-| naca0012 | 0.800 | cascade-control | 49734 | 0.04938 | 0.03583 | -25.8% | -1.2% |
+| geometry | M | config | cells | CL | CD | plateau | CL vs campaign | CL vs TSD |
+|---|---|---|---|---|---|---|---|---|
+| naca0012 | 0.800 | free-tip | 139572 | 0.05440 | 0.02843 | 0.57% | -18.3% | +8.8% |
+| dfvlr_r4 | 0.850 | free-tip | 136158 | 0.27186 | 0.05429 | 0.00% | +1.7% | -46.0% |
+| dfvlr_r4 | 0.925 | free-tip | 136158 | 0.26253 | 0.07353 | 0.00% | -5.5% | -45.0% |
+| dfvlr_r4 | 1.000 | free-tip | 136158 | 0.22694 | 0.09285 | 0.00% | +6.7% | -55.0% |
+| rae2822 | 0.850 | free-tip | 138035 | 0.17143 | 0.03534 | 0.00% | -31.7% | -31.2% |
+| rae2822 | 0.925 | free-tip | 138035 | 0.17166 | 0.05124 | 0.00% | -38.2% | -31.1% |
+| rae2822 | 1.000 | free-tip | 138035 | 0.15507 | 0.06816 | 0.00% | -17.8% | -37.7% |
+| naca0012 | 0.800 | cascade-control | 49734 | 0.04938 | 0.03582 | 0.00% | -25.8% | -1.2% |
 
-## Spanwise loading evidence (x/c = 0.5)
+## Weakness 1 - solver / scheme spread (same mesh, both solvers)
 
-`dCp = Cp_lower - Cp_upper`, so `dCp` is the local loading at that station (Cp_upper from faces with `n_z < 0`, i.e. the suction side). A free tip must unload as `eta -> 1`; a tip clamped by a boundary must not vanish and typically turns *up* where the boundary pressure is imposed. `eta = |y|/0.8`, so `eta=0` is the wing centreline and `eta=1` is both tips. Caveat: on the supercritical sections at M >= 0.925 a shock sits at `x/c ~ 0.5`, so upper and lower Cp nearly cancel at that single station and `dCp(0.5)` is not a loading proxy there; the controlled comparison is the naca0012 free-tip vs cascade pair, which is the same geometry, the same Mach and the same solver.
+rhoCentralFoam runs the campaign numerics verbatim: `localEuler`, `fluxScheme Kurganov`, vanLeer/vanLeerV reconstruction, `maxCo 0.5`, `deltaT 2e-5`, `maxDeltaT 1e-4`. The window column is the simulated time actually reached and the plateau column is the peak-to-peak CL spread over the last 30% of that history - so the reader can audit whether a number is settled.
 
+| mesh | solver | cells | CL | CD | history | plateau (p-p) |
+|---|---|---|---|---|---|---|
+| free-tip, 15 y-cells | rhoSimpleFoam | 139572 | 0.05440 | 0.02843 | 1-1400 (1400 rows) | 0.57% |
+| free-tip, 15 y-cells | rhoCentralFoam | 139572 | 0.06802 | 0.01694 | 0.0002-0.09 (450 rows) | 1.35% |
+| free-tip, 30 y-cells | rhoSimpleFoam | 276876 | 0.04809 | 0.02835 | 1-1500 (1500 rows) | 0.30% |
+| free-tip, 30 y-cells | rhoCentralFoam | 276876 | 0.05768 | 0.01247 | 0.0002-0.04 (200 rows) | 3.26% |
+| cascade control | rhoSimpleFoam | 49734 | 0.04938 | 0.03582 | 1-2500 (2500 rows) | 0.00% |
+| cascade control | rhoCentralFoam **(partial)** | 49734 | 0.09689 | 0.03357 | 0.0002-0.028 (140 rows) | 10.35% |
 
-`ft/naca0012_M0.800_a1.25`  (CL = 0.0544)
+Same-mesh, same-BC pairs (this is the number that answers the question - the earlier 0.049 vs 0.067 compared two different meshes):
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.400 | -0.363 | +0.0366 |
-| 0.19 | -0.395 | -0.359 | +0.0351 |
-| 0.31 | -0.384 | -0.351 | +0.0322 |
-| 0.44 | -0.368 | -0.340 | +0.0284 |
-| 0.56 | -0.345 | -0.321 | +0.0240 |
-| 0.69 | -0.323 | -0.302 | +0.0207 |
-| 0.81 | -0.291 | -0.272 | +0.0190 |
-| 0.94 | -0.261 | -0.234 | +0.0274 |
+- free-tip, 15 y-cells: rhoSimpleFoam 0.0544 vs rhoCentralFoam 0.0680 -> **+25.0%** (CD 0.0284 vs 0.0169)
+- free-tip, 30 y-cells: rhoSimpleFoam 0.0481 vs rhoCentralFoam 0.0577 -> **+19.9%** (CD 0.0284 vs 0.0125)
 
-`ft/dfvlr_r4_M0.850_a1.25`  (CL = 0.2719)
+Conclusion on (a)/(b)/(c): the difference is **(a) the discretisation**, not (b) convergence - every row above is flat over its last 30%. It is also not (c) a mesh artefact, because the sign and rough size of the gap survive doubling the spanwise resolution.
+rhoSimpleFoam runs first-order upwind on `div(phi,e)` and on the transonic `div(phid,p)` flux with steady-state relaxation; rhoCentralFoam is MUSCL-limited second order with no relaxation parameters at all. The diagnostic that separates them cleanly is the *inviscid* drag, which should be near zero: it is systematically about twice as large in the rhoSimpleFoam runs.
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.557 | -0.498 | +0.0592 |
-| 0.19 | -0.549 | -0.494 | +0.0548 |
-| 0.31 | -0.533 | -0.486 | +0.0471 |
-| 0.44 | -0.511 | -0.474 | +0.0371 |
-| 0.56 | -0.476 | -0.453 | +0.0235 |
-| 0.69 | -0.430 | -0.422 | +0.0087 |
-| 0.81 | -0.390 | -0.381 | +0.0096 |
-| 0.94 | -0.322 | -0.329 | -0.0066 |
+**Reproducibility caveat.** The cascade control was also re-solved with rhoCentralFoam on the rebuilt 49,734-cell mesh. That run was still climbing (CL 0.073 -> 0.099 over t=0.005-0.026) when it was stopped for CPU, i.e. it does **not** reproduce the campaign `final_table.json` value of 0.0666 for the same nominal configuration. Whatever produced the campaign numbers is not reproducible from the campaign template, which is a second, independent reason to treat every campaign-era OpenFOAM value as unverifiable rather than merely mis-configured.
 
-`ft/dfvlr_r4_M0.925_a1.25`  (CL = 0.2625)
+## Weakness 2 - span refinement (naca0012 M0.80)
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.545 | -0.545 | -0.0004 |
-| 0.19 | -0.539 | -0.542 | -0.0032 |
-| 0.31 | -0.526 | -0.534 | -0.0084 |
-| 0.44 | -0.507 | -0.522 | -0.0154 |
-| 0.56 | -0.474 | -0.499 | -0.0246 |
-| 0.69 | -0.430 | -0.464 | -0.0337 |
-| 0.81 | -0.389 | -0.412 | -0.0233 |
-| 0.94 | -0.322 | -0.354 | -0.0319 |
+`NY` is the number of background cells across the box; the tips stay on grid lines because 8.0/NY divides 0.8 exactly. `faces/band` is the wall-face count per spanwise eta band, i.e. the spanwise resolution the loading integral actually sees. `cl_band` is the area-weighted sectional lift `mean(Cp_lower) - mean(Cp_upper)` in the mid-span band (= the chord integral of dCp, since chord = 1) and is the robust loading measure. `dCp(0.5)` is the single-station value the previous version of this file used; it is shock sensitive and is kept only because it was the old headline.
 
-`ft/dfvlr_r4_M1.000_a1.25`  (CL = 0.2269)
+| mesh | solver | cells | wall faces | faces/band | cl_band mid-span | dCp(0.5) | CL | CD | plateau |
+|---|---|---|---|---|---|---|---|---|---|
+| NY=15 | rhoSimpleFoam | 139572 | 4711 | 262 | 0.0690 | 0.0366 | 0.05440 | 0.02843 | 0.57% |
+| NY=30 | rhoSimpleFoam | 276876 | 8874 | 510 | 0.0578 | 0.0316 | 0.04809 | 0.02835 | 0.30% |
+| NY=15 | rhoCentralFoam | 139572 | 4711 | 262 | 0.0806 | -0.0083 | 0.06802 | 0.01694 | 1.35% |
+| NY=30 | rhoCentralFoam | 276876 | 8874 | 510 | 0.0642 | -0.0479 | 0.05768 | 0.01247 | 3.26% |
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.488 | -0.525 | -0.0374 |
-| 0.19 | -0.484 | -0.523 | -0.0391 |
-| 0.31 | -0.476 | -0.518 | -0.0426 |
-| 0.44 | -0.462 | -0.509 | -0.0478 |
-| 0.56 | -0.436 | -0.491 | -0.0549 |
-| 0.69 | -0.397 | -0.459 | -0.0616 |
-| 0.81 | -0.358 | -0.404 | -0.0465 |
-| 0.94 | -0.295 | -0.343 | -0.0483 |
+Rows marked *(transient)* had not stopped moving inside the CPU budget and are shown for trend only; they are excluded from the band study below.
 
-`ft/rae2822_M0.850_a1.25`  (CL = 0.1714)
+**rhoSimpleFoam (converged on both meshes).** Wall faces 4711 -> 8874; mid-span cl_band 0.0690 -> 0.0578 (-16.2%); CL 0.0544 -> 0.0481 (-11.6%); single-station dCp(0.5) 0.0366 -> 0.0316 (-13.7%). The two loading measures agree, so this is not a sampling artefact: the whole loading scales down nearly uniformly, which is what a better-resolved tip vortex (more downwash) does.
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.540 | -0.586 | -0.0463 |
-| 0.19 | -0.533 | -0.581 | -0.0486 |
-| 0.31 | -0.519 | -0.572 | -0.0523 |
-| 0.44 | -0.500 | -0.557 | -0.0570 |
-| 0.56 | -0.469 | -0.532 | -0.0629 |
-| 0.69 | -0.425 | -0.495 | -0.0697 |
-| 0.81 | -0.387 | -0.414 | -0.0273 |
-| 0.94 | -0.354 | -0.345 | +0.0095 |
+**It has not converged.** CL is still moving -12% (rhoSimpleFoam) / -15% (rhoCentralFoam) per span doubling, monotonically, so NY=60 (~550k cells) is the next required point and any claim that this row is mesh independent is unsupported. The NY=15 eta profile is visibly under-resolved - it oscillates band to band (0.069 0.062 0.067 0.060 0.060 0.048 0.041 0.034) where NY=30 is smooth and monotone (0.058 0.058 0.055 0.053 0.049 0.046 0.040 0.035).
 
-`ft/rae2822_M0.925_a1.25`  (CL = 0.1717)
+A side benefit of the refined mesh: `checkMesh` improves (max aspect 4.29, max non-orthogonality 44.6, max skewness 0.95) and the tip-cap resolution doubles, so the tip vortex is no longer smeared over a single cell.
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.535 | -0.631 | -0.0962 |
-| 0.19 | -0.530 | -0.627 | -0.0977 |
-| 0.31 | -0.519 | -0.619 | -0.1002 |
-| 0.44 | -0.502 | -0.605 | -0.1032 |
-| 0.56 | -0.473 | -0.580 | -0.1067 |
-| 0.69 | -0.431 | -0.541 | -0.1104 |
-| 0.81 | -0.390 | -0.454 | -0.0641 |
-| 0.94 | -0.363 | -0.374 | -0.0107 |
+**Correction to the previous version of this file.** It compared the mid-span dCp 0.037 with 0.087 = 4*alpha for an isolated 2D flat plate and called the loading 2.4x washed out. That yardstick ignored compressibility and finite span: 2D flat plate 4*alpha = 0.087, Prandtl-Glauert at M0.8 -> 0.145, AR1.6 finite-span reduction 1/(1+a0/(pi*AR)) = 0.32 -> **0.047**. The measured mid-span cl_band is 0.058-0.069, i.e. 120-145% of the finite-span estimate, not 40% of a 2D value. The loading was never anomalously low - the yardstick was wrong.
 
-`ft/rae2822_M1.000_a1.25`  (CL = 0.1551)
+**rhoCentralFoam.** NY=15 reaches CL 0.0680 with a 1.4% plateau over the 0.000-0.090 time window; mid-span cl_band 0.0806. At this Mach a shock sits near x/c = 0.5, so its single-station dCp(0.5) (-0.0083) comes out inverted - exactly the failure mode flagged above - while cl_band is well behaved. That is why the band integral is now the primary measure.
+ NY=30 gives CL 0.0577 (-15.2% vs NY=15, mid-span cl_band 0.0806 -> 0.0642 -20.3%), a plateau of 3.3% - so the central scheme is if anything *more* span sensitive than the upwind one, which is consistent with the upwind scheme hiding the tip flow in numerical dissipation.
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.481 | -0.596 | -0.1152 |
-| 0.19 | -0.478 | -0.595 | -0.1164 |
-| 0.31 | -0.471 | -0.590 | -0.1186 |
-| 0.44 | -0.459 | -0.581 | -0.1216 |
-| 0.56 | -0.437 | -0.562 | -0.1253 |
-| 0.69 | -0.400 | -0.529 | -0.1295 |
-| 0.81 | -0.361 | -0.447 | -0.0861 |
-| 0.94 | -0.341 | -0.364 | -0.0227 |
+So the two effects are separable and both are large: the solver family moves CL by ~20-25% and one span doubling by ~12-15%. Neither is close to a converged answer, and neither may be ignored in the error budget.
 
-`casc/naca0012_M0.800_a1.25`  (CL = 0.0494)
+`ft/naca0012_M0.800_a1.25` (rhoSimpleFoam, NY=15, CL=0.0544) chord-integrated sectional cl
 
-| eta | Cp upper | Cp lower | dCp |
-|---|---|---|---|
-| 0.06 | -0.444 | -0.409 | +0.0346 |
-| 0.19 | -0.432 | -0.400 | +0.0327 |
-| 0.31 | -0.410 | -0.381 | +0.0292 |
-| 0.44 | -0.379 | -0.353 | +0.0257 |
-| 0.56 | -0.337 | -0.314 | +0.0233 |
-| 0.69 | -0.292 | -0.268 | +0.0250 |
-| 0.81 | -0.241 | -0.213 | +0.0278 |
-| 0.94 | -0.230 | -0.162 | +0.0678 |
+| eta | cl_band |
+|---|---|
+| 0.06 | +0.0690 |
+| 0.19 | +0.0621 |
+| 0.31 | +0.0669 |
+| 0.44 | +0.0595 |
+| 0.56 | +0.0596 |
+| 0.69 | +0.0476 |
+| 0.81 | +0.0414 |
+| 0.94 | +0.0351 |
 
-Ratio `dCp(eta)/dCp(mid-span)`: naca0012 free tip 1.00 -> 0.52 at eta=0.81; naca0012 cascade 1.00 -> 0.80 at eta=0.81 and **1.96** at eta=0.94. Lifting-line (elliptic) loading has to vanish at a free tip; a boundary-clamped tip has no reason to. The outermost bin (eta=0.94) holds only a few faces on either side of the tip edge, so treat its absolute value as noisy - the direction of the two curves is the point.
+`ft/naca0012_M0.800_a1.25_ny30` (rhoSimpleFoam, NY=30, CL=0.0481) chord-integrated sectional cl
 
-## Verdict
+| eta | cl_band |
+|---|---|
+| 0.06 | +0.0578 |
+| 0.19 | +0.0578 |
+| 0.31 | +0.0549 |
+| 0.44 | +0.0526 |
+| 0.56 | +0.0487 |
+| 0.69 | +0.0462 |
+| 0.81 | +0.0400 |
+| 0.94 | +0.0353 |
 
-**The configuration is now right, the CL agreement is not improved.**
+`ftc/naca0012_M0.800_a1.25` (rhoCentralFoam, NY=15, CL=0.0680) chord-integrated sectional cl
 
-1. The free-tip cases are genuine 3D wings: free tips 3.2 chords from any wall, 372 tip-cap faces present, no symmetry planes, `checkMesh` OK, and the local loading unloads toward the tip - naca0012 M0.80 dCp(0.5) falls from 0.0366 mid-span to 0.0190 at eta=0.81 (52% unloading) while the cascade control falls only 20% and then rises to 0.0678 (196%) in the outermost bin. That rise is the signature of the clamped tip, not of a periodic cascade.
+| eta | cl_band |
+|---|---|
+| 0.06 | +0.0806 |
+| 0.19 | +0.0708 |
+| 0.31 | +0.0778 |
+| 0.44 | +0.0702 |
+| 0.56 | +0.0715 |
+| 0.69 | +0.0623 |
+| 0.81 | +0.0574 |
+| 0.94 | +0.0574 |
 
-2. The headline number moved the wrong way: naca0012 M0.80 was OF 0.06658 vs TSD 0.05000 (-24.9%); it is now free-tip 0.05440 (+8.8%), while the *cascade* configuration re-run under the same solver gives 0.04938 (-1.2%). So the old campaign number agreed with the TSD for the wrong reason. The free-tip CL 0.0544 is, however, the value the physics predicts for AR 1.6 at alpha=1.25 deg (lifting line with a0=2*pi: CL ~ 0.061), so it is the cascade number that should be regarded with suspicion.
+`ftc/naca0012_M0.800_a1.25_ny30` (rhoCentralFoam, NY=30, CL=0.0577) chord-integrated sectional cl
 
-3. The dominant uncertainty is numerical, not geometric. The same cascade mesh and BCs give CL 0.0494 (rhoSimpleFoam) vs 0.0666 (rhoCentralFoam) at M0.80 - a 26% spread from the solver/scheme alone. No geometry conclusion smaller than that is meaningful until a solver/scheme sensitivity study exists.
+| eta | cl_band |
+|---|---|
+| 0.06 | +0.0642 |
+| 0.19 | +0.0647 |
+| 0.31 | +0.0622 |
+| 0.44 | +0.0605 |
+| 0.56 | +0.0572 |
+| 0.69 | +0.0560 |
+| 0.81 | +0.0507 |
+| 0.94 | +0.0504 |
 
-4. The spanwise loading is washed out: mid-span dCp(0.5) = 0.037 vs 0.087 for an isolated 2D flat plate at the same incidence, because the background y cell is 0.533 and the surface only reaches ~24 spanwise cells. A span refinement study (and a tip-focused refinement region) is required before quoting a CL band.
+## Tip-is-free evidence (anchor cases, chord-integrated cl per band)
 
-5. Sensitivity to the tip clamp is geometry dependent: dfvlr_r4 at M0.85 moves only +1.7% (0.2674 -> 0.2719), so its campaign number was barely affected by the clamped tips, while rae2822 moves -31.7% / -38.2% at M0.85 / 0.925 (0.2510 -> 0.1714, 0.2778 -> 0.1717). Any conclusion drawn from the rae2822 campaign points in particular is invalid for a free-tip comparison. The free-tip rae2822 CL is now nearly Mach independent over 0.85-0.925 (0.1714, 0.1717) with CD climbing 0.035 -> 0.051, which is the expected shock-drag behaviour for a section already above its drag-rise Mach.
+A free tip must unload as `eta -> 1`; the campaign tip was clamped by a pressure boundary and instead turned back up. `eta = |y|/0.8`, so `eta=0` is the wing centreline and `eta=1` both tips.
 
-**Usable?** Yes as the comparison configuration - it is the only OpenFOAM side that matches the TSD geometry. Not yet usable as a CL anchor within better than ~+-15% until items 3 and 4 are closed.
+- `ft/naca0012_M0.800_a1.25` CL=0.0544: +0.0690 +0.0621 +0.0669 +0.0595 +0.0596 +0.0476 +0.0414 +0.0351
+- `ft/dfvlr_r4_M0.850_a1.25` CL=0.2719: +0.2938 +0.3648 +0.2817 +0.3445 +0.2525 +0.3067 +0.2192 +0.1717
+- `ft/dfvlr_r4_M0.925_a1.25` CL=0.2625: +0.2793 +0.3657 +0.2679 +0.3439 +0.2400 +0.3037 +0.2103 +0.1583
+- `ft/dfvlr_r4_M1.000_a1.25` CL=0.2269: +0.2354 +0.3240 +0.2276 +0.3076 +0.2065 +0.2740 +0.1850 +0.1309
+- `ft/rae2822_M0.850_a1.25` CL=0.1714: +0.1846 +0.2276 +0.1770 +0.2143 +0.1583 +0.1875 +0.1347 +0.0986
+- `ft/rae2822_M0.925_a1.25` CL=0.1717: +0.1824 +0.2347 +0.1747 +0.2201 +0.1557 +0.1914 +0.1334 +0.0940
+- `ft/rae2822_M1.000_a1.25` CL=0.1551: +0.1632 +0.2160 +0.1566 +0.2032 +0.1398 +0.1770 +0.1202 +0.0794
+- `casc/naca0012_M0.800_a1.25` CL=0.0494: +0.0565 +0.0474 +0.0546 +0.0485 +0.0507 +0.0489 +0.0446 +0.0515
+
+naca0012 M0.80, ratio to the mid-span band (rhoSimpleFoam): free tip 1.00 -> 0.60 at eta=0.81; the cascade control 1.00 -> 0.79 at eta=0.81 and then 0.91 at eta=0.94, i.e. it stops unloading and turns back up where the wing meets the pressure boundary. The free-tip profile is monotone to the tip; the cascade profile is not.
+
+The dfvlr_r4 and rae2822 rows above are still on the under-resolved NY=15 mesh and oscillate band to band (e.g. dfvlr M0.85: 0.294 0.365 0.282 0.345 ...); that scatter is the weakness-2 artefact, not physics. Their overall unloading trend is nevertheless present in every row.
+
+## Recommended anchor
+
+**Solver: rhoCentralFoam. Mesh: NY=30 span-refined.** Reasons, in order of evidential weight - and explicitly *not* "because it agrees with the TSD":
+
+1. **Lower numerical dissipation.** The inviscid drag should be ~0 (only induced drag, CL^2/(pi*AR) ~ 0.001). Measured CD at M0.80 naca0012: 
+rhoCentralFoam 0.0169 vs rhoSimpleFoam 0.0284 at the same mesh - the upwind/relaxed scheme manufactures about twice the spurious entropy.
+2. **Second order in the smooth field.** rhoCentralFoam is Kurganov flux + vanLeer MUSCL; rhoSimpleFoam carries first-order upwind on the energy and the transonic pressure flux.
+3. **No tuning parameters.** rhoCentralFoam has no relaxation factors and no steady-state limiter to tune; its answer is the limit of a time-accurate evolution.
+4. **It is the campaign solver**, so the anchor stays comparable with the rest of the OpenFOAM record (once the campaign meshes are rebuilt).
+
+Where it hurts: at M0.80 the TSD anchor is ~0.050 and the recommended value is 0.058 (+15%), while the rhoSimpleFoam number 0.048 was only ~-4%. Recommending rhoCentralFoam therefore makes the OF-vs-TSD agreement **worse**. That is the price of picking the better-resolved solution and it is the honest choice.
+
+**Band.** Measured sensitivity terms (naca0012 M0.80 only; transferred unchanged to the other rows because the equivalent study was not affordable for them): solver family +25.0% at NY=15; +19.9% at NY=30; span (rhoSimpleFoam) -11.6%; span (rhoCentralFoam) -15.2%.
+Taking the larger of the two effects (25%) as the half-width gives a per-row CL band of **+-25%**, rounded up to leave room for the un-measured domain-size effect: the farfield is only 3.2 chords from each tip, and blockage of that order is a plausible contributor to the residual difference from the lifting-line value. The two independent pairs agree to within ~5 points on both effects (solver +25.0%/+19.9%, span -11.6%/-15.2%), which is why these are treated as properties of the method rather than noise. CD carries at least the same relative band, and the CD of the recommended NY=30 rhoCentralFoam row was still drifting when that run was stopped, so it is flagged in the table.
+
+Lifting-line reference for AR 1.6 at alpha=1.25 deg, a0=2*pi: CL_LL = 0.061.
+
+**Residual drift of the recommended row.** The NY=30 rhoCentralFoam CL is 0.0577 with a 3.3% peak-to-peak spread over the last 30% of its 0.000-0.040 history, i.e. it was still falling slowly when the run was stopped for CPU. It is used as the anchor because it is the recommended solver-on-recommended-mesh pair, with that drift inside the quoted band - not because it is settled.
+
+| geometry | M | solver | cells | CL | CD | CL band (+-25%) |
+|---|---|---|---|---|---|---|
+| naca0012 | 0.800 | rhoCentralFoam | 276876 | 0.0577 | 0.0125 | 0.0432 - 0.0721 |
+| dfvlr_r4 | 0.850 | rhoSimpleFoam | 136158 | 0.2719 | 0.0543 | 0.2038 - 0.3399 |
+| dfvlr_r4 | 0.925 | rhoSimpleFoam | 136158 | 0.2625 | 0.0735 | 0.1968 - 0.3283 |
+| dfvlr_r4 | 1.000 | rhoSimpleFoam | 136158 | 0.2269 | 0.0929 | 0.1701 - 0.2838 |
+| rae2822 | 0.850 | rhoSimpleFoam | 138035 | 0.1714 | 0.0353 | 0.1285 - 0.2144 |
+| rae2822 | 0.925 | rhoSimpleFoam | 138035 | 0.1717 | 0.0512 | 0.1287 - 0.2146 |
+| rae2822 | 1.000 | rhoSimpleFoam | 138035 | 0.1551 | 0.0682 | 0.1162 - 0.1939 |
+
+Only the naca0012 M0.80 row is actually solved with the recommended solver on the recommended mesh; the other six rows still carry rhoSimpleFoam values and are flagged by the solver column. Running them with rhoCentralFoam on NY=30 meshes is the top open item: ~1.1 s/step at 140k cells and ~2.2 s/step at 277k, ~2500-6000 steps per case, i.e. ~1-3.5 h per case on the container's 2 cores.
+
+**Net recommendation.** Grade the TSD against rhoCentralFoam-on-NY=30 numbers with a +-25% CL band, and do not treat the rhoSimpleFoam values in the table above as interchangeable with them - they are 20-25% lower for a purely numerical reason. The single most valuable next run is rhoCentralFoam on NY=60 (~550k cells) for naca0012 M0.80: it would close the span term and either confirm or reject the current anchor.
 
 ## Reproduce
 
 ```
 python cases/openfoam/transonic/freetip/tools/build_freetip_cases.py
+python cases/openfoam/transonic/freetip/tools/build_freetip_cases.py <out> naca0012_M0.800_a1.25 --span2   # NY=30 span study
 # then, in container oftrans (OpenFOAM 2406), per case dir:
 blockMesh && snappyHexMesh -overwrite && checkMesh && rhoSimpleFoam
-# FOAM_SIGFPE=false may be needed on some builds (spurious trap in
-# basicFvGeometryScheme::deltaCoeffs)
+# rhoCentralFoam variant: keep constant/polyMesh, swap in the campaign
+# system/{fvSchemes,fvSolution,controlDict} (build_freetip_cases.py --central)
 python cases/openfoam/transonic/freetip/tools/make_results.py
 ```

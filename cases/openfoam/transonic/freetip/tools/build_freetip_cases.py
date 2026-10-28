@@ -50,6 +50,10 @@ SPAN = 1.6                                       # wing y in [-0.8, +0.8]
 AREF = 1.6                                       # c * span
 YBOX = 4.0                                       # domain y in [-4, +4]
 NY = 15                                          # 15 * 0.5333 = 8.0, tips on gridlines
+# Background y-cell count. The tip grid lines only land on the wing tips when
+# YBOX/NY divides 0.8 exactly: 8.0/15 = 0.5333 (0.8/0.5333 = 1.5 ... floored by
+# 15/3=5, i.e. 0.8 = 3 cells) and 8.0/30 = 0.2667 (0.8 = 3 cells). Both work.
+NY_SPAN2 = 30                                    # span-refinement study (~2x)
 
 # --- background box, campaign-identical in x/z ------------------------------
 X0, X1 = -10.0, 21.0
@@ -72,13 +76,13 @@ def write(path, text):
         fh.write(text)
 
 
-def blockmesh():
+def blockmesh(ny=NY):
     return f"""{FOAM} class dictionary; object blockMeshDict; }}
 convertToMeters 1;
 vertices (
  ({X0} {-YBOX} {Z0}) ({X1} {-YBOX} {Z0}) ({X1} {YBOX} {Z0}) ({X0} {YBOX} {Z0})
  ({X0} {-YBOX} {Z1}) ({X1} {-YBOX} {Z1}) ({X1} {YBOX} {Z1}) ({X0} {YBOX} {Z1}));
-blocks (hex (0 1 2 3 4 5 6 7) ({NX} {NY} {NZ}) simpleGrading (1 1 1));
+blocks (hex (0 1 2 3 4 5 6 7) ({NX} {ny} {NZ}) simpleGrading (1 1 1));
 edges ();
 boundary (
  farfield {{ type patch; faces ((0 4 7 3) (1 2 6 5) (0 1 5 4) (3 7 6 2) (0 3 2 1) (4 5 6 7)); }});
@@ -86,14 +90,14 @@ mergePatchPairs ();
 """
 
 
-def snappy(stl):
+def snappy(stl, maxg=MAX_GLOBAL):
     layers = 'true' if NSURFACELAYERS else 'false'
     return f"""{FOAM} class dictionary; object snappyHexMeshDict; }}
 castellatedMesh true; snap true; addLayers {layers};
 geometry {{ {stl} {{ type triSurfaceMesh; file "{stl}"; }}
  wakebox {{ type searchableBox; min (0 -0.8 -0.6); max (4 0.8 0.6); }} }}
 castellatedMeshControls {{
- maxLocalCells {MAX_LOCAL}; maxGlobalCells {MAX_GLOBAL}; minRefinementCells 10;
+ maxLocalCells {int(maxg * 0.4)}; maxGlobalCells {maxg}; minRefinementCells 10;
  maxLoadUnbalance 0.1; nCellsBetweenLevels 3;
  features ();
  refinementSurfaces {{ {stl} {{ level (3 4); patchInfo {{ type wall; }} }} }}
@@ -305,10 +309,15 @@ def main():
     out = sys.argv[1] if len(sys.argv) > 1 else FT
     names = [a for a in sys.argv[2:] if not a.startswith('-')]
     central = '--central' in sys.argv
+    ny = NY
+    suffix = ''
+    if '--span2' in sys.argv:
+        ny, suffix = NY_SPAN2, '_ny30'
+    maxg = MAX_GLOBAL if ny == NY else int(MAX_GLOBAL * 2.2)
     for name, stl, M in CASES:
         if names and name not in names:
             continue
-        d = os.path.join(out, name)
+        d = os.path.join(out, name + suffix)
         # numerics/thermo copied verbatim from the campaign case (same family)
         src = os.path.join(CAMPAIGN, name)
         for f in ('system/meshQualityDict', 'constant/thermophysicalProperties',
@@ -321,8 +330,8 @@ def main():
         os.makedirs(os.path.join(d, 'constant', 'triSurface'), exist_ok=True)
         shutil.copy2(os.path.join(STLDIR, stl),
                      os.path.join(d, 'constant', 'triSurface', stl))
-        write(os.path.join(d, 'system', 'blockMeshDict'), blockmesh())
-        write(os.path.join(d, 'system', 'snappyHexMeshDict'), snappy(stl))
+        write(os.path.join(d, 'system', 'blockMeshDict'), blockmesh(ny))
+        write(os.path.join(d, 'system', 'snappyHexMeshDict'), snappy(stl, maxg))
         if central:
             for f in ('system/fvSchemes', 'system/fvSolution'):
                 s = os.path.join(src, f)
