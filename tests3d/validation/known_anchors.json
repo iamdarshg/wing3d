@@ -1,6 +1,6 @@
 {
  "_meta": {
-  "note": "KNOWN reference anchors for immediate ablation grading (set 2026-10-23). 86k corpus from final_table.json (all 13 M); fine-branch 125k dfvlr from the dfvlr_fine program (terminated at 6/9 by owner decision; M1.000+ not run). M6 = published 3D RANS SA-neg (diagnostic).",
+  "note": "KNOWN reference anchors for immediate ablation grading (set 2026-10-23). 86k corpus from final_table.json (all 13 M); fine-branch 125k dfvlr from the dfvlr_fine program (terminated at 6/9 by owner decision; M1.000+ not run). M6 = published 3D RANS SA-neg (diagnostic). fine M1.000 added 2026-10-28 from the resumed solve (CL=0.3037588 at t=0.25); the 86k corpus value (0.2126) is 43% low there.",
   "grade_rule": "PASS/FAIL vs cl_pub/cl_band immediately. Replace with A5 3D RANS anchors when registered."
  },
  "corpus_86k": {
@@ -71,7 +71,8 @@
   "0.9": 0.363524,
   "0.925": 0.3629209,
   "0.95": 0.3464955,
-  "0.975": 0.3264051
+  "0.975": 0.3264051,
+  "1.0": 0.3037588
  },
  "m6_published": {
   "cl": 0.268,
