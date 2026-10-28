@@ -154,18 +154,25 @@ a surface flow with almost no suction peak (Cfmax 0.39, nsup 182).
 
 `WING3D_KUTTA=0` (imprint sheet at k=1) + `free_k=True`, M0.85, ep4, entropy:
 
-| ep | k_mid | CL |
-|---|---|---|
-| 0 | 0.095 | 0.0381 |
-| 1 | 0.128 | 0.0384 |
-| 3 | 0.128 | 0.0388 |
+| ep | k_mid | CL | nsup |
+|---|---|---|---|
+| 0 | 0.095 | 0.0381 | 26 |
+| 1 | 0.128 | 0.0384 | 60 |
+| 3 | 0.128 | 0.0388 | 133 |
 
-free_k still collapses, now to **k ≈ 0.13** (A8 recorded ~0.02) with CL 0.0388
-against 0.3143 at k=1. It is the same failure mode as the new closure and the
-same cause: the row `kutta_residual(upstream=2)` samples the loading at x≈0.87
-where a Kutta-satisfying loading is still 40% of peak, so its root is "no aft
-loading" (k→0), not "smooth TE flow" (k=1). free_k's k≈0.13 and mode 1's
-Γ/Γ_LL≈0.05 are two measurements of one structural defect.
+and at M1.00 (ep4): k_mid 0.094, CL 0.03835, nsup 49721 (the field is
+marginal-supersonic everywhere, so that point is not converged either).
+
+free_k still collapses, now to **k ≈ 0.13** at M0.85 (A8 recorded ~0.02) with
+CL 0.0388 against 0.3143 at k=1. It is the same failure mode as the new closure
+and the same cause: the row `kutta_residual(upstream=2)` samples the loading at
+x≈0.87 where a Kutta-satisfying loading is still 40% of peak, so its root is
+"no aft loading" (k→0), not "smooth TE flow" (k=1). free_k's k≈0.13 and mode 1's
+Γ/Γ_LL≈0.05 are two measurements of one structural defect. Note also that the
+*free_k CL is Mach-flat* (0.0388 → 0.0384 from M0.85 to M1.00, −1.1%): the old
+closure does not lose lift transonically either, because what it keeps is again
+not the circulation.
+
 
 ## 8. Verdict
 
