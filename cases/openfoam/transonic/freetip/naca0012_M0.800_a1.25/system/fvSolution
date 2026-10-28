@@ -1,0 +1,30 @@
+FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
+solvers
+{
+ "rho.*" { solver diagonal; }
+ p { solver GAMG; smoother GaussSeidel; tolerance 1e-8; relTol 0.01;
+     nCellsInCoarsestLevel 1000; }
+ "(U|e|h|k|omega)" { solver smoothSolver; smoother GaussSeidel; nSweeps 2;
+     tolerance 1e-9; relTol 0.01; }
+}
+// rhoSimpleFoam in 2406 reads the SIMPLE dict (solutionControl); the
+// rhoSimple alias is given identical content so either name is harmless.
+SIMPLE
+{
+ momentumPredictor no;
+ nNonOrthogonalCorrectors 1;
+ consistent yes;
+ transonic yes;
+}
+rhoSimple
+{
+ momentumPredictor no;
+ nNonOrthogonalCorrectors 1;
+ consistent yes;
+ transonic yes;
+}
+relaxationFactors
+{
+ fields { p 0.3; rho 0.3; }
+ equations { U 0.6; e 0.6; }
+}

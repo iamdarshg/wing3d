@@ -1,0 +1,7 @@
+FoamFile { version 2.0; format ascii; class volScalarField; object p; }
+dimensions [1 -1 -2 0 0 0 0];
+internalField uniform 100000.0;
+boundaryField {
+ farfield { type freestreamPressure; freestreamValue uniform 100000.0; }
+ "dfvlr_r4.stl" { type zeroGradient; }
+}
