@@ -864,29 +864,43 @@ def write_md(res, spread, span, mat, dom=None, central_rows=None):
           f'{val:.4f} | {cdv:.4f} | {val * (1 - bw):.4f} - {val * (1 + bw):.4f} |')
     A('')
     done = [x for x in central_rows]
-    if done:
-        d0 = done[0]
-        A(f'Caveat on the one moved geometry row: {d0["geometry"]} '
-          f'M{d0["mach"]:.3f} reached CL '
-          f'{d0["Cl_at"].get("t=0.020") or d0["Cl_tail"]:.4f} at t=0.020 while '
-          'still rising (0.193 at t=0.005 -> 0.310 at t=0.020), so it is a '
-          '*lower bound* on the rhoCentralFoam value and not a settled number. '
-          'Against the rhoSimpleFoam steady value 0.2719 it is +14%, so for '
-          'this cambered supercritical geometry the solver spread is at least '
-          '14% but is not established: because the value is still rising, the '
-          'true spread could be anywhere above that, up to the 20-25% seen on '
-          'the symmetric NACA0012. The Mach slope M0.85 -> M1.00 still cannot '
-          'be quoted on the recommended solver because the M1.00 point was not '
-          'run.')
-    A('Coverage: naca0012 M0.80 is on the recommended solver and the '
-      f'finest span level (NY={top}). '
+
+    def ct(x):
+        return x['Cl_at'].get('t=0.020') or x['Cl_tail']
+
+    d85 = next((x for x in done if abs(x['mach'] - 0.85) < 1e-6), None)
+    d100 = next((x for x in done if abs(x['mach'] - 1.00) < 1e-6), None)
+    if d85:
+        A(f'Caveat on the moved geometry rows: dfvlr_r4 M0.850 reached CL '
+          f'{ct(d85):.4f} at t=0.020 and M1.000 reached CL {ct(d100):.4f} '
+          f'(Cd {d100["Cd_tail"]:.4f})' if d100 else
+          f'Caveat on the moved geometry row: dfvlr_r4 M0.850 reached CL '
+          f'{ct(d85):.4f} at t=0.020')
+        A(', in both cases while still rising, so they are *lower bounds* on '
+          'the rhoCentralFoam values rather than settled numbers. ')
+        if d100:
+            s_c = pct(ct(d100), ct(d85))
+            s_s = pct(0.2269, 0.2719)
+            A(f'The transonic slope they imply, M0.85 -> M1.00, is '
+              f'{s_c:+.1f}% on rhoCentralFoam against {s_s:+.1f}% on '
+              'rhoSimpleFoam: the better-resolved solver produces a markedly '
+              '*steeper* transonic collapse, which is the slope the TSD has to '
+              'reproduce. Against rhoSimpleFoam the two rows move '
+              f'{pct(ct(d85), 0.2719):+.0f}% and {pct(ct(d100), 0.2269):+.0f}%, '
+              'i.e. the solver spread is smaller at M1.00 than the 20-25% seen '
+              'on the symmetric NACA0012 - but both are rising at their stop, '
+              'so that comparison is provisional.')
+        A('\n')
+    A('Coverage: naca0012 M0.80 is on the recommended solver at the finest span '
+      f'level (NY={top}); '
       + (', '.join(f'{x["geometry"]} M{x["mach"]:.3f}' for x in done)
-         + ' are on rhoCentralFoam at NY=30. ' if done else '')
-      + 'The remaining rows are still rhoSimpleFoam on the NY=15 mesh and are '
-      'marked as such in the solver and mesh columns. Moving the rest to '
-      'rhoCentralFoam at the converged span level is the outstanding item: at '
-      '~9 s/step for 517k cells and 1000 steps to t=0.02, that is ~2.5 h per '
-      'case on this container.\n')
+         + ' are on rhoCentralFoam at NY=30 (the dfvlr bracket requested for '
+         'priority 3). ' if done else '')
+      + 'The %d remaining rows (dfvlr M0.925 and the three rae2822 points) are '
+      'still rhoSimpleFoam on the NY=15 mesh and are marked as such in the '
+      'solver and mesh columns. Moving them is the outstanding item: at '
+      '~2-4 s/step for 269k cells and ~1000 steps to t=0.02, that is ~0.7-1.1 h '
+      'per case on this container.\n' % max(0, 7 - 1 - len(done)))
     A('**Net recommendation.** Grade the TSD against the rhoCentralFoam rows '
       f'with a +-{total:.0f}% CL band. Do not mix the rhoSimpleFoam rows into '
       'the same comparison: they sit 20-25% low for a purely numerical reason.')

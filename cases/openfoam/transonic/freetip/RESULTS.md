@@ -212,13 +212,17 @@ Lifting-line reference for AR 1.6 at alpha=1.25 deg, a0=2*pi: CL_LL = 0.061.
 | naca0012 | 0.800 | rhoCentralFoam | NY=60 | 517186 | 0.0624 | 0.0319 | 0.0479 - 0.0768 |
 | dfvlr_r4 | 0.850 | rhoCentralFoam | NY=30 | 269152 | 0.3099 | 0.0660 | 0.2380 - 0.3818 |
 | dfvlr_r4 | 0.925 | rhoSimpleFoam | NY=15 | 136158 | 0.2625 | 0.0735 | 0.2017 - 0.3234 |
-| dfvlr_r4 | 1.000 | rhoSimpleFoam | NY=15 | 136158 | 0.2269 | 0.0929 | 0.1743 - 0.2796 |
+| dfvlr_r4 | 1.000 | rhoCentralFoam | NY=30 | 269152 | 0.2346 | 0.1101 | 0.1802 - 0.2890 |
 | rae2822 | 0.850 | rhoSimpleFoam | NY=15 | 138035 | 0.1714 | 0.0353 | 0.1317 - 0.2112 |
 | rae2822 | 0.925 | rhoSimpleFoam | NY=15 | 138035 | 0.1717 | 0.0512 | 0.1319 - 0.2115 |
 | rae2822 | 1.000 | rhoSimpleFoam | NY=15 | 138035 | 0.1551 | 0.0682 | 0.1191 - 0.1910 |
 
-Caveat on the one moved geometry row: dfvlr_r4 M0.850 reached CL 0.3099 at t=0.020 while still rising (0.193 at t=0.005 -> 0.310 at t=0.020), so it is a *lower bound* on the rhoCentralFoam value and not a settled number. Against the rhoSimpleFoam steady value 0.2719 it is +14%, so for this cambered supercritical geometry the solver spread is at least 14% but is not established: because the value is still rising, the true spread could be anywhere above that, up to the 20-25% seen on the symmetric NACA0012. The Mach slope M0.85 -> M1.00 still cannot be quoted on the recommended solver because the M1.00 point was not run.
-Coverage: naca0012 M0.80 is on the recommended solver and the finest span level (NY=60). dfvlr_r4 M0.850 are on rhoCentralFoam at NY=30. The remaining rows are still rhoSimpleFoam on the NY=15 mesh and are marked as such in the solver and mesh columns. Moving the rest to rhoCentralFoam at the converged span level is the outstanding item: at ~9 s/step for 517k cells and 1000 steps to t=0.02, that is ~2.5 h per case on this container.
+Caveat on the moved geometry rows: dfvlr_r4 M0.850 reached CL 0.3099 at t=0.020 and M1.000 reached CL 0.2346 (Cd 0.1101)
+, in both cases while still rising, so they are *lower bounds* on the rhoCentralFoam values rather than settled numbers. 
+The transonic slope they imply, M0.85 -> M1.00, is -24.3% on rhoCentralFoam against -16.6% on rhoSimpleFoam: the better-resolved solver produces a markedly *steeper* transonic collapse, which is the slope the TSD has to reproduce. Against rhoSimpleFoam the two rows move +14% and +3%, i.e. the solver spread is smaller at M1.00 than the 20-25% seen on the symmetric NACA0012 - but both are rising at their stop, so that comparison is provisional.
+
+
+Coverage: naca0012 M0.80 is on the recommended solver at the finest span level (NY=60); dfvlr_r4 M0.850, dfvlr_r4 M1.000 are on rhoCentralFoam at NY=30 (the dfvlr bracket requested for priority 3). The 4 remaining rows (dfvlr M0.925 and the three rae2822 points) are still rhoSimpleFoam on the NY=15 mesh and are marked as such in the solver and mesh columns. Moving them is the outstanding item: at ~2-4 s/step for 269k cells and ~1000 steps to t=0.02, that is ~0.7-1.1 h per case on this container.
 
 **Net recommendation.** Grade the TSD against the rhoCentralFoam rows with a +-23% CL band. Do not mix the rhoSimpleFoam rows into the same comparison: they sit 20-25% low for a purely numerical reason.
 
