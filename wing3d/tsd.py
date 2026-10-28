@@ -602,7 +602,7 @@ class TSDSolver:
                                    mode='valid')
                 r = solve_streamline(xf, ucol, nu, x_tr_forced=xtr,
                                      me=mcol)
-                dstar = np.maximum(r['dstar'], 0.0)
+                dstar = np.clip(r['dstar'], 0.0, 0.05)
                 dst[:, jj] = np.interp(xc, xf, dstar)
                 if r['separated']:
                     i_sep = int(r['i_sep']) if r['i_sep'] >= 0 else nf - 1

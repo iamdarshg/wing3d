@@ -94,7 +94,11 @@ def solve_streamline(s, Ue, nu, Re_ref=1.0, x_tr_forced=None, me=None):
     at reattachment.
     """
     s = np.asarray(s, dtype=float)
-    Ue = np.maximum(np.asarray(Ue, dtype=float), 1e-9)
+    # Ue floor: Thwaites' theta^2 ~ 1/Ue^6 is numerically catastrophic as
+    # Ue -> 0 (measured: dstar/c = 1e57 -> Jacobian failure).  A 1% of
+    # freestream floor is physical (the march starts just aft of the
+    # stagnation point) and keeps theta bounded.
+    Ue = np.maximum(np.asarray(Ue, dtype=float), 1e-2)
     n = len(s)
     if me is None:
         me = np.zeros(n)
@@ -110,6 +114,8 @@ def solve_streamline(s, Ue, nu, Re_ref=1.0, x_tr_forced=None, me=None):
         ds = max(s[i] - s[i - 1], 0.0)
         integ[i] = integ[i - 1] + 0.5 * (ue5[i] + ue5[i - 1]) * ds
     theta = np.sqrt(np.maximum(0.45 * nu * integ / Ue ** 6, 1e-30))
+    # hard cap: theta beyond 5% chord is not a boundary layer any more
+    theta = np.minimum(theta, 5.0e-2)
     lam_raw = theta ** 2 / max(nu, 1e-300) * dUe
     lam = np.clip(lam_raw, -0.09, 0.25)
     H = np.zeros(n)
