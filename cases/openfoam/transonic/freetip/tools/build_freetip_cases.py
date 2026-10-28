@@ -53,7 +53,10 @@ NY = 15                                          # 15 * 0.5333 = 8.0, tips on gr
 # Background y-cell count. The tip grid lines only land on the wing tips when
 # YBOX/NY divides 0.8 exactly: 8.0/15 = 0.5333 (0.8/0.5333 = 1.5 ... floored by
 # 15/3=5, i.e. 0.8 = 3 cells) and 8.0/30 = 0.2667 (0.8 = 3 cells). Both work.
-NY_SPAN2 = 30                                    # span-refinement study (~2x)
+NY_SPAN2 = 30                                    # span-refinement study (2x)
+NY_SPAN4 = 60                                    # span-refinement study (4x)
+# Domain-size study: same near-wing y cell as NY=30 in a doubled box.
+YBOX_BIG = 8.0
 
 # --- background box, campaign-identical in x/z ------------------------------
 X0, X1 = -10.0, 21.0
@@ -76,12 +79,12 @@ def write(path, text):
         fh.write(text)
 
 
-def blockmesh(ny=NY):
+def blockmesh(ny=NY, ybox=YBOX):
     return f"""{FOAM} class dictionary; object blockMeshDict; }}
 convertToMeters 1;
 vertices (
- ({X0} {-YBOX} {Z0}) ({X1} {-YBOX} {Z0}) ({X1} {YBOX} {Z0}) ({X0} {YBOX} {Z0})
- ({X0} {-YBOX} {Z1}) ({X1} {-YBOX} {Z1}) ({X1} {YBOX} {Z1}) ({X0} {YBOX} {Z1}));
+ ({X0} {-ybox} {Z0}) ({X1} {-ybox} {Z0}) ({X1} {ybox} {Z0}) ({X0} {ybox} {Z0})
+ ({X0} {-ybox} {Z1}) ({X1} {-ybox} {Z1}) ({X1} {ybox} {Z1}) ({X0} {ybox} {Z1}));
 blocks (hex (0 1 2 3 4 5 6 7) ({NX} {ny} {NZ}) simpleGrading (1 1 1));
 edges ();
 boundary (
@@ -310,10 +313,23 @@ def main():
     names = [a for a in sys.argv[2:] if not a.startswith('-')]
     central = '--central' in sys.argv
     ny = NY
+    ybox = YBOX
     suffix = ''
     if '--span2' in sys.argv:
         ny, suffix = NY_SPAN2, '_ny30'
-    maxg = MAX_GLOBAL if ny == NY else int(MAX_GLOBAL * 2.2)
+    elif '--span4' in sys.argv:
+        ny, suffix = NY_SPAN4, '_ny60'
+    elif '--ybox8' in sys.argv:
+        ny, ybox, suffix = NY_SPAN2 * 2, YBOX_BIG, '_ny60_y8'
+    elif '--ybox2' in sys.argv:
+        # same near-wing y cell (0.2667) as NY=30 @ y=+-4, in a box just 1.2
+        # chords outboard of each tip: the cheap end of the domain study.
+        ny, ybox, suffix = 15, 2.0, '_ny15_y2'
+    maxg = MAX_GLOBAL
+    if ny == NY_SPAN2 and ybox == YBOX:
+        maxg = int(MAX_GLOBAL * 2.2)
+    elif ny >= NY_SPAN4:
+        maxg = int(MAX_GLOBAL * 3.6)
     for name, stl, M in CASES:
         if names and name not in names:
             continue
@@ -330,7 +346,7 @@ def main():
         os.makedirs(os.path.join(d, 'constant', 'triSurface'), exist_ok=True)
         shutil.copy2(os.path.join(STLDIR, stl),
                      os.path.join(d, 'constant', 'triSurface', stl))
-        write(os.path.join(d, 'system', 'blockMeshDict'), blockmesh(ny))
+        write(os.path.join(d, 'system', 'blockMeshDict'), blockmesh(ny, ybox))
         write(os.path.join(d, 'system', 'snappyHexMeshDict'), snappy(stl, maxg))
         if central:
             for f in ('system/fvSchemes', 'system/fvSolution'):

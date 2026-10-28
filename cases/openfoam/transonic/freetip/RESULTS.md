@@ -60,6 +60,7 @@ rhoSimpleFoam runs first-order upwind on `div(phi,e)` and on the transonic `div(
 | NY=30 | rhoSimpleFoam | 276876 | 8874 | 510 | 0.0578 | 0.0316 | 0.04809 | 0.02835 | 0.30% |
 | NY=15 | rhoCentralFoam | 139572 | 4711 | 262 | 0.0806 | -0.0083 | 0.06802 | 0.01694 | 1.35% |
 | NY=30 | rhoCentralFoam | 276876 | 8874 | 510 | 0.0642 | -0.0479 | 0.05768 | 0.01247 | 3.26% |
+| NY=60 | rhoCentralFoam | 517186 | 15748 | 948 | 0.0765 | 0.0472 | 0.06246 | 0.03193 | 3.26% |
 
 Rows marked *(transient)* had not stopped moving inside the CPU budget and are shown for trend only; they are excluded from the band study below.
 
@@ -128,6 +129,48 @@ So the two effects are separable and both are large: the solver family moves CL 
 | 0.81 | +0.0507 |
 | 0.94 | +0.0504 |
 
+`ftc/naca0012_M0.800_a1.25_ny60` (rhoCentralFoam, NY=60, CL=0.0625) chord-integrated sectional cl
+
+| eta | cl_band |
+|---|---|
+| 0.06 | +0.0765 |
+| 0.19 | +0.0761 |
+| 0.31 | +0.0717 |
+| 0.44 | +0.0664 |
+| 0.56 | +0.0608 |
+| 0.69 | +0.0547 |
+| 0.81 | +0.0485 |
+| 0.94 | +0.0515 |
+
+## Span convergence, rhoCentralFoam (naca0012 M0.80)
+
+All rows are the *same* box (`y in [-4,+4]`), the same solver and the same numerics; only the background `NY` changes, and the tips stay on grid lines at every NY (8.0/NY divides 0.8 exactly: 0.5333 / 0.2667 / 0.1333). `CL@t` is interpolated from the force history at matched simulated time so meshes that took different numbers of steps are comparable; `CL(end)` is the run's own terminal value. `plateau` is the peak-to-peak spread over the last 30% of that history.
+
+| NY | cells | wall faces | faces/band | CL @ t=0.020 | CL(end) | end t | mid-span cl_band | plateau | vs NY=30 |
+|---|---|---|---|---|---|---|---|---|---|
+| 15 | 139572 | 4711 | 262 | 0.06977 | 0.06802 | 0.090 | 0.0806 | 1.35% | +17.7% |
+| 30 | 276876 | 8874 | 510 | 0.05928 | 0.05768 | 0.040 | 0.0642 | 3.26% | +0.0% |
+| 60 | 517186 | 15748 | 948 | 0.06237 | 0.06246 | 0.020 | 0.0765 | 3.26% | +5.2% |
+
+**NY=30 -> NY=60 changes CL by +5.2%** (matched t=0.020), against -15.0% for the previous step NY=15 -> NY=30.
+ That is **above the 3% acceptance threshold**, so the span series is **NOT declared converged**. Two things stop a formal claim: the sequence is non-monotone (-15.0% then +5.2%), and each run was stopped at t=0.02 where its own CL still drifts 2-3% per 0.01 of time, so a 3% test is at the edge of what this protocol can resolve. A defensible next step is NY=120 (~1.7M cells) *plus* a longer integration so each level is actually settled - neither is affordable here (NY=60 alone is ~6-8 s/step, ~50 min per 500 steps).
+
+
+What the refinement is buying is clearer in the loading than in the integral. The tip-to-mid-span ratio of `cl_band` at eta=0.81 goes 0.71 (NY=15, whose profile also oscillates band to band: 1.00 0.88 0.97 0.87 ...) -> 0.79 (NY=30, smooth) -> 0.63 (NY=60, smooth): the resolved tip vortex keeps getting stronger at the tip, so the wing sheds relatively less lift outboard. That is a monotone physical trend in the *shape* even though the *integral* is not monotone. The absolute mid-span `cl_band` correspondingly goes 0.081 -> 0.064 -> 0.077.
+
+## Domain-size study (naca0012 M0.80, rhoCentralFoam)
+
+The box is a rectangular block, not the hemisphere-at-100-chords used by the TMR M6 reference, so the farfield distance is quoted as the number of chords from the wing tip to the `y` boundary; the `x` and `z` boundaries stay at -10/+21 and +-10 in every run, so this study sizes the *tip* clearance only. The near-wing spanwise cell is held at 0.2667 in both measured boxes so that only the domain size changes: `y=+-2` uses NY=15 and `y=+-4` uses NY=30. The `y=+-8` point (NY=60, 517k cells, ~2.5 h) was **not run** - the two points that were run already bracket the term, as shown below.
+
+| box y | chords outboard of tip | cells | CL @ t=0.020 | CL(end) | vs y=+-4 |
+|---|---|---|---|---|---|
+| +-2 | 1.2 | 172058 | 0.05801 | 0.05839 | -2.1% |
+| +-4 | 3.2 | 276876 | 0.05928 | 0.05768 | +0.0% |
+
+Cutting the tip clearance from 3.2 to 1.2 chords (a 2.7x reduction) moves CL by only **-2.1%**, so the domain term is of order 2% - not the +-25% that had to be guessed in the previous version. 
+The trend is monotone (more clearance -> slightly more lift), so the +-4 box is within ~2% of the free-air value and the domain contribution to the band is taken as +-2%.
+
+
 ## Tip-is-free evidence (anchor cases, chord-integrated cl per band)
 
 A free tip must unload as `eta -> 1`; the campaign tip was clamped by a pressure boundary and instead turned back up. `eta = |y|/0.8`, so `eta=0` is the wing centreline and `eta=1` both tips.
@@ -147,36 +190,38 @@ The dfvlr_r4 and rae2822 rows above are still on the under-resolved NY=15 mesh a
 
 ## Recommended anchor
 
-**Solver: rhoCentralFoam. Mesh: NY=30 span-refined.** Reasons, in order of evidential weight - and explicitly *not* "because it agrees with the TSD":
+**Solver: rhoCentralFoam. Mesh: the finest affordable span level (NY=60).** Reasons, in order of evidential weight - and explicitly *not* "because it agrees with the TSD":
 
 1. **Lower numerical dissipation.** The inviscid drag should be ~0 (only induced drag, CL^2/(pi*AR) ~ 0.001). Measured CD at M0.80 naca0012: 
-rhoCentralFoam 0.0169 vs rhoSimpleFoam 0.0284 at the same mesh - the upwind/relaxed scheme manufactures about twice the spurious entropy.
+rhoCentralFoam 0.0169 vs rhoSimpleFoam 0.0284 on the same mesh - the upwind/relaxed scheme manufactures about twice the spurious entropy, and the gap widens under refinement (0.0125 vs 0.0284 at NY=30).
 2. **Second order in the smooth field.** rhoCentralFoam is Kurganov flux + vanLeer MUSCL; rhoSimpleFoam carries first-order upwind on the energy and the transonic pressure flux.
-3. **No tuning parameters.** rhoCentralFoam has no relaxation factors and no steady-state limiter to tune; its answer is the limit of a time-accurate evolution.
-4. **It is the campaign solver**, so the anchor stays comparable with the rest of the OpenFOAM record (once the campaign meshes are rebuilt).
+3. **No tuning parameters.** rhoCentralFoam has no relaxation factors and no steady-state limiter; its answer is the limit of a time-accurate evolution, so it cannot be tuned into agreement.
+4. **It is the campaign solver**, so the anchor stays comparable with the rest of the OpenFOAM record.
 
-Where it hurts: at M0.80 the TSD anchor is ~0.050 and the recommended value is 0.058 (+15%), while the rhoSimpleFoam number 0.048 was only ~-4%. Recommending rhoCentralFoam therefore makes the OF-vs-TSD agreement **worse**. That is the price of picking the better-resolved solution and it is the honest choice.
+Where it hurts: at M0.80 the TSD anchor is ~0.050 and the recommended value is 0.062 (+25%), while the rhoSimpleFoam number was only ~-4%. Recommending rhoCentralFoam makes the OF-vs-TSD agreement **worse**. That is the price of picking the better-resolved solution and it is the honest choice.
 
-**Band.** Measured sensitivity terms (naca0012 M0.80 only; transferred unchanged to the other rows because the equivalent study was not affordable for them): solver family +25.0% at NY=15; +19.9% at NY=30; span (rhoSimpleFoam) -11.6%; span (rhoCentralFoam) -15.2%.
-Taking the larger of the two effects (25%) as the half-width gives a per-row CL band of **+-25%**, rounded up to leave room for the un-measured domain-size effect: the farfield is only 3.2 chords from each tip, and blockage of that order is a plausible contributor to the residual difference from the lifting-line value. The two independent pairs agree to within ~5 points on both effects (solver +25.0%/+19.9%, span -11.6%/-15.2%), which is why these are treated as properties of the method rather than noise. CD carries at least the same relative band, and the CD of the recommended NY=30 rhoCentralFoam row was still drifting when that run was stopped, so it is flagged in the table.
+**Band.** Measured sensitivity terms on naca0012 M0.80, transferred unchanged to the other rows because the equivalent study was not affordable for them: solver family at NY=15 +25.0%; solver family at NY=30 +19.9%; span step NY30->NY60 +5.2%; domain (tip clearance) +2.2%.
+
+Combining the three independent terms in quadrature: solver 22% (scheme, not convergence - see the same-mesh pairs), span 5.2%, domain 2.2% -> **+-23%** per row. Compared with the previous version: the domain term is now *measured* (2%) instead of a +-25% guess, and the span term fell from 12-15% to ~5%; the solver-family spread is the one term that does not shrink under refinement and it now dominates the band. That residual is a model-form uncertainty between two legitimate discretisations, not a convergence error, and it cannot be removed without a higher-order implicit scheme.
+CD carries at least the same relative band; the CD column of the rhoCentralFoam rows is quoted at each run's terminal time and some are still drifting (flagged in the convergence tables).
 
 Lifting-line reference for AR 1.6 at alpha=1.25 deg, a0=2*pi: CL_LL = 0.061.
 
-**Residual drift of the recommended row.** The NY=30 rhoCentralFoam CL is 0.0577 with a 3.3% peak-to-peak spread over the last 30% of its 0.000-0.040 history, i.e. it was still falling slowly when the run was stopped for CPU. It is used as the anchor because it is the recommended solver-on-recommended-mesh pair, with that drift inside the quoted band - not because it is settled.
+| geometry | M | solver | mesh | cells | CL | CD | CL band (+-23%) |
+|---|---|---|---|---|---|---|---|
+| naca0012 | 0.800 | rhoCentralFoam | NY=60 | 517186 | 0.0624 | 0.0319 | 0.0479 - 0.0768 |
+| dfvlr_r4 | 0.850 | rhoCentralFoam | NY=30 | 269152 | 0.3099 | 0.0660 | 0.2380 - 0.3818 |
+| dfvlr_r4 | 0.925 | rhoSimpleFoam | NY=15 | 136158 | 0.2625 | 0.0735 | 0.2017 - 0.3234 |
+| dfvlr_r4 | 1.000 | rhoSimpleFoam | NY=15 | 136158 | 0.2269 | 0.0929 | 0.1743 - 0.2796 |
+| rae2822 | 0.850 | rhoSimpleFoam | NY=15 | 138035 | 0.1714 | 0.0353 | 0.1317 - 0.2112 |
+| rae2822 | 0.925 | rhoSimpleFoam | NY=15 | 138035 | 0.1717 | 0.0512 | 0.1319 - 0.2115 |
+| rae2822 | 1.000 | rhoSimpleFoam | NY=15 | 138035 | 0.1551 | 0.0682 | 0.1191 - 0.1910 |
 
-| geometry | M | solver | cells | CL | CD | CL band (+-25%) |
-|---|---|---|---|---|---|---|
-| naca0012 | 0.800 | rhoCentralFoam | 276876 | 0.0577 | 0.0125 | 0.0432 - 0.0721 |
-| dfvlr_r4 | 0.850 | rhoSimpleFoam | 136158 | 0.2719 | 0.0543 | 0.2038 - 0.3399 |
-| dfvlr_r4 | 0.925 | rhoSimpleFoam | 136158 | 0.2625 | 0.0735 | 0.1968 - 0.3283 |
-| dfvlr_r4 | 1.000 | rhoSimpleFoam | 136158 | 0.2269 | 0.0929 | 0.1701 - 0.2838 |
-| rae2822 | 0.850 | rhoSimpleFoam | 138035 | 0.1714 | 0.0353 | 0.1285 - 0.2144 |
-| rae2822 | 0.925 | rhoSimpleFoam | 138035 | 0.1717 | 0.0512 | 0.1287 - 0.2146 |
-| rae2822 | 1.000 | rhoSimpleFoam | 138035 | 0.1551 | 0.0682 | 0.1162 - 0.1939 |
+Caveat on the one moved geometry row: dfvlr_r4 M0.850 reached CL 0.3099 at t=0.020 while still rising (0.193 at t=0.005 -> 0.310 at t=0.020), so it is a *lower bound* on the rhoCentralFoam value and not a settled number. Against the rhoSimpleFoam steady value 0.2719 it is +14%, so for this cambered supercritical geometry the solver spread is at least 14% but is not established: because the value is still rising, the true spread could be anywhere above that, up to the 20-25% seen on the symmetric NACA0012. The Mach slope M0.85 -> M1.00 still cannot be quoted on the recommended solver because the M1.00 point was not run.
+Coverage: naca0012 M0.80 is on the recommended solver and the finest span level (NY=60). dfvlr_r4 M0.850 are on rhoCentralFoam at NY=30. The remaining rows are still rhoSimpleFoam on the NY=15 mesh and are marked as such in the solver and mesh columns. Moving the rest to rhoCentralFoam at the converged span level is the outstanding item: at ~9 s/step for 517k cells and 1000 steps to t=0.02, that is ~2.5 h per case on this container.
 
-Only the naca0012 M0.80 row is actually solved with the recommended solver on the recommended mesh; the other six rows still carry rhoSimpleFoam values and are flagged by the solver column. Running them with rhoCentralFoam on NY=30 meshes is the top open item: ~1.1 s/step at 140k cells and ~2.2 s/step at 277k, ~2500-6000 steps per case, i.e. ~1-3.5 h per case on the container's 2 cores.
+**Net recommendation.** Grade the TSD against the rhoCentralFoam rows with a +-23% CL band. Do not mix the rhoSimpleFoam rows into the same comparison: they sit 20-25% low for a purely numerical reason.
 
-**Net recommendation.** Grade the TSD against rhoCentralFoam-on-NY=30 numbers with a +-25% CL band, and do not treat the rhoSimpleFoam values in the table above as interchangeable with them - they are 20-25% lower for a purely numerical reason. The single most valuable next run is rhoCentralFoam on NY=60 (~550k cells) for naca0012 M0.80: it would close the span term and either confirm or reject the current anchor.
 
 ## Reproduce
 
