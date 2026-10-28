@@ -244,13 +244,32 @@ class TSDSolver:
         #   both present; the Kutta row selects the sheet amplitude
         #   (the load split is then the sum, as in a VLM+thickness
         #   decomposition).
+        # WING3D_KUTTA=4: A10 closure -- bound sheet F(x)*Gamma, thickness-
+        #   only transpiration (as mode 1) but the closure row is the
+        #   TANGENCY row  wav(x_cp,y_j) - (dyc/dx - alpha) = 0  (the
+        #   field's own mean-plane normal velocity, tsd.w_plane, must
+        #   balance the geometric slope), plus the MORINO wake condition
+        #   Gamma_wake = phi_up(TE) - phi_lo(TE) (measured from the field
+        #   instead of prescribed). See tests3d/a10_kutta_report.md.
         try:
             self.kutta_mode = int(os.environ.get('WING3D_KUTTA', '0') or 0)
         except ValueError:
             self.kutta_mode = 0
         self.kutta_on = self.kutta_mode > 0
-        self.kutta_bound = self.kutta_mode in (1, 3)  # bound sheet from Gamma
-        self.kutta_thick_only = self.kutta_mode == 1  # transpiration: dyt only
+        self.kutta_bound = self.kutta_mode in (1, 3, 4)  # bound sheet from Gamma
+        self.kutta_thick_only = self.kutta_mode in (1, 4)  # transpiration: dyt
+        # closure row family: 1-3 = TE loading dCp (A9), 4 = tangency
+        self.kutta_tangency = self.kutta_mode == 4
+        # Morino wake condition (mode 4): the wake doublet is the TE
+        # potential jump the FIELD carries, not a prescribed copy of
+        # gamma_b. WING3D_MORINO=0 turns it back into the prescribed wake
+        # (used to measure whether the condition carries information).
+        self.kutta_morino = (self.kutta_mode == 4) and (
+            os.environ.get('WING3D_MORINO', '1') == '1')
+        self.tang_xc = float(os.environ.get('WING3D_TANG_XC', '0.75'))
+        # 'gal' = loading-weighted chordwise reduction (default),
+        # 'pt'  = single control station at tang_xc
+        self.tang_mode = os.environ.get('WING3D_TANG_MODE', 'gal')
         self.gamma_b = np.zeros(len(self.wing_jy))
         # Kutta-row weight, measured against the phi-row Jacobian scale
         # (tests3d/tsd_kutta_weight.py, never an arbitrary 10): the weight
@@ -258,7 +277,11 @@ class TSDSolver:
         # A_scale = 6.33e3 (g80x32x32, M0.3). Measured converged coupled
         # gains |dCp(TE)/dGamma|: 1.18e2 (mode 1, thick-only + bound sheet)
         # -> w=54; 4.72e0 (mode 2, free wake only) -> w=1.5e3.
-        _wd = {1: '50', 2: '1500', 3: '50'}.get(self.kutta_mode, '50')
+        # Mode 4 (tangency row): measured converged gain d wav/d Gamma =
+        # -0.81 at the 0.75c control point (three converged phi solves,
+        # tsd_a10_probe3.py), so w = A_scale/0.81 = 7.24e3/0.81 = 8.9e3.
+        _wd = {1: '50', 2: '1500', 3: '50', 4: '8.9e3'}.get(
+            self.kutta_mode, '50')
         self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', _wd))
 
         self._circff = None  # farfield circulation (wake interp target)
@@ -489,9 +512,21 @@ class TSDSolver:
                 # free circulation: the wake sheet trails exactly the TE
                 # value of the bound sheet (Helmholtz), constant in x --
                 # no farfield (_circff) blending, which would re-pin it.
-                self.wake_G = np.interp(
-                    self.yc, self.yc[np.asarray(self.wing_jy)],
-                    self.gamma_b, left=0.0, right=0.0)
+                jy = np.asarray(self.wing_jy)
+                if self.kutta_morino:
+                    # MORINO wake condition: the wake doublet IS the
+                    # potential jump the field carries at the TE
+                    # (Gamma_wake = phi_up(TE) - phi_lo(TE)), not a
+                    # prescribed copy of gamma_b. Helmholtz then holds by
+                    # construction and the trailed strength is measured
+                    # from the solve instead of being dictated.
+                    _Jte = self.te_jump()
+                    self.wake_G = np.interp(
+                        self.yc, self.yc[jy], _Jte[jy], left=0.0, right=0.0)
+                else:
+                    self.wake_G = np.interp(
+                        self.yc, self.yc[jy],
+                        self.gamma_b, left=0.0, right=0.0)
             WI, WJ = np.meshgrid(self.wake_ix, self.wake_jy, indexing='ij')
             # muw (wake_G) is circulation PER UNIT SPAN gamma(y)
             # (CL = 2*int(gamma)dy/span, see tests3d/diag_camber.py).
@@ -642,6 +677,83 @@ class TSDSolver:
             out[tag] = q
             out['me_' + tag] = self.Minf * q / np.sqrt(np.maximum(tt, 0.2))
         return out
+
+    # ------------------------------------------------------------------
+    # wing-plane normal velocity (the tangency condition's left side)
+    # ------------------------------------------------------------------
+    def _gradz_plane(self, k):
+        """dphi/dz on z-plane k (central in z; one-sided at the box faces)."""
+        g = np.zeros((self.nx, self.ny))
+        if 0 < k < self.nz - 1:
+            g[:] = (self.phi[:, :, k + 1] - self.phi[:, :, k - 1]) / (
+                self.z[k + 1] - self.z[k - 1])
+        elif k == 0:
+            g[:] = (self.phi[:, :, 1] - self.phi[:, :, 0]) / self.dz[0]
+        else:
+            g[:] = (self.phi[:, :, -1] - self.phi[:, :, -2]) / self.dz[-1]
+        return g
+
+    def w_plane(self, wide=False):
+        """Field normal velocity w = dphi/dz at the wing plane, z -> 0.
+
+        MEASURED (tests3d/tsd_a10_probe*.py, g80x32x32, M0.3, AR1.6):
+        the branch cut carries a potential jump which is stored as a
+        +-J/2 offset on the two nodal planes alongside it. Any 3-point
+        stencil that straddles the cut therefore reads jump/dz, not a
+        velocity: the wide extrapolation (planes k0+1,k0+2 / k0-1,k0-2)
+        gives w = 24.4 * gamma -- 1/dz_core, the plumbing, not the flow.
+
+        The symmetric FIRST-ORDER pair straddling the cut cancels the
+        +-J/2 offset to first order and leaves the smooth field: measured
+        w = -0.0028 - 0.810*gamma at the 0.75c control point, which is the
+        physical downwash scale (thin-airfoil: w ~ -alpha at the chord for
+        a lifting distribution). That is the estimator this returns:
+
+            wu = (phi[k0+1] - phi[k0]) / (z[k0+1] - z[k0])
+            wl = (phi[k0-1] - phi[k0-2]) / (z[k0-1] - z[k0-2])
+            wav = 0.5*(wu + wl)     <- the mean-plane normal velocity
+
+        (wu - wl)/2 is the thickness (antisymmetric) part, which the
+        transpiration source already carries. Returns (wu, wl, wav),
+        each shaped (nx, ny). `wide=True` gives the old jump-contaminated
+        extrapolation, kept for diagnostics only.
+        """
+        k0 = self.k0
+        if wide:
+            def surf(k1, k2):
+                z1, z2 = self.z[k1], self.z[k2]
+                w = abs(z2) / max(abs(z2 - z1), 1e-12)
+                return w * self._gradz_plane(k1) + (1 - w) * \
+                    self._gradz_plane(k2)
+
+            ku1 = min(k0 + 1, self.nz - 1)
+            ku2 = min(k0 + 2, self.nz - 1)
+            kl1 = max(k0 - 1, 0)
+            kl2 = max(k0 - 2, 0)
+            wu = surf(ku1, ku2)
+            wl = surf(kl1, kl2)
+            return wu, wl, 0.5 * (wu + wl)
+        kp = min(k0 + 1, self.nz - 1)
+        km = max(k0 - 2, 0)
+        wu = (self.phi[:, :, kp] - self.phi[:, :, k0]) / max(
+            self.z[kp] - self.z[k0], 1e-12)
+        wl = (self.phi[:, :, k0 - 1] - self.phi[:, :, km]) / max(
+            self.z[k0 - 1] - self.z[km], 1e-12)
+        return wu, wl, 0.5 * (wu + wl)
+
+    def te_jump(self):
+        """Potential jump actually carried by the field at the TE.
+
+        phi(k0) - phi(k0-1) at the last wing chord station, full ny. This
+        is the *measured* jump used by the Morino wake condition
+        (Gamma_wake = phi_up(TE) - phi_lo(TE)); compare it with the
+        prescribed jump F(1)*gamma_b = gamma_b to see whether that
+        condition carries any information (measured, see
+        tsd_a10_probe.py).
+        """
+        k0 = self.k0
+        ite = self.wing_ix[-1]
+        return self.phi[ite, :, k0] - self.phi[ite, :, k0 - 1]
 
     def bl_march(self, Re=None, xtr=None):
         """March an integral BL along every span strip (both surfaces).
@@ -1038,6 +1150,69 @@ class TSDSolver:
             self.wing_ix) else self.wing_ix[0]
         return np.array([cpl[ite, j] - cpu[ite, j]
                          for j in self.wing_jy])
+
+    def tangency_residual(self, xc_cp=None):
+        """Tangency row: the field's normal velocity at the mean plane.
+
+        For each span cell j the physical condition is that the normal
+        velocity at the control station balances the geometric slope:
+
+            wav(x_cp, y_j) - (dyc/dx(x_cp) - alpha) = 0
+
+        wav = 0.5*(wu + wl) is the mean-plane normal velocity
+        (``w_plane``: dphi/dz extrapolated to z=0 from the planes k0+-1,
+        k0+-2, i.e. read from phi *values*, never from the branch-cut
+        face flux).  Its thickness half (wu - wl)/2 is the antisymmetric
+        part, which the transpiration source already carries; only the
+        symmetric (lifting) part is left for this row, which is why the
+        row must be paired with thickness-only transpiration
+        (kutta_thick_only): if the transpiration also imposed
+        (dyc/dx - alpha) the row would be satisfied by construction and
+        could not select gamma.
+
+        Returned length len(wing_jy); scaled by kutta_w in the coupled
+        residual. Unlike kutta_residual (which reads phi gradients at the
+        TE and therefore only constrains the *local* sheet amplitude),
+        wav at station j contains the downwash of the whole trailed
+        system, so the row couples all span stations -> elliptic loading.
+        """
+        k0 = self.k0
+        iu = np.asarray(self.wing_ix)
+        jy = np.asarray(self.wing_jy)
+        if len(iu) == 0 or len(jy) == 0:
+            return np.zeros(0)
+        xc = self.xc[iu] / self.chord
+        xcp = float(self.tang_xc if xc_cp is None else xc_cp)
+        wu, wl, wav = self.w_plane()
+        if self.tang_mode == 'gal':
+            # LOADING-WEIGHTED (Galerkin) form of the same condition: the
+            # chordwise tangency is reduced with the only shape the sheet
+            # has, the flat-plate loading A(x). One point per span cell
+            # cannot represent the chordwise problem, and a single 0.75c
+            # station reads the LOCAL camber slope there (dfvlr: +2.5% at
+            # 0.75c -> zero circulation, measured in a10 ladder A). The
+            # weighted form is the standard reduction of the chordwise
+            # condition to a section equation.
+            A = (2.0 / np.pi) * np.sqrt(
+                np.maximum(1.0 - xc, 0.0) / np.maximum(xc, 1e-9))
+            wgt = A / max(float(np.trapezoid(A, xc)), 1e-30)
+            if self.profile is not None:
+                slope_c = np.asarray(self.profile['camber'](xc), dtype=float)
+            else:
+                slope_c = np.zeros(len(xc))
+            g = slope_c - self.alpha
+            r = np.zeros(len(jy))
+            for p, j in enumerate(jy):
+                r[p] = float(np.trapezoid(wgt * (wav[iu, j] - g), xc))
+            return r
+        icp = int(iu[int(np.argmin(np.abs(xc - xcp)))])
+        x_at = self.xc[icp] / self.chord
+        if self.profile is not None:
+            slope_c = float(self.profile['camber'](x_at))
+        else:
+            slope_c = 0.0
+        w_geom = slope_c - self.alpha
+        return np.array([wav[icp, j] for j in jy]) - w_geom
 
     def recirc_update(self, W=0.25, circff=None):
         """TSFOIL-style Kutta update (RECIRC).

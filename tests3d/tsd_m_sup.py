@@ -78,8 +78,13 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         from tsd_coupled import lifting_line_gamma
         s.kutta_mode = kutta
         s.kutta_on = True
-        s.kutta_bound = kutta in (1, 3)
-        s.kutta_thick_only = (kutta == 1)
+        s.kutta_bound = kutta in (1, 3, 4)
+        s.kutta_thick_only = kutta in (1, 4)
+        s.kutta_tangency = (kutta == 4)
+        s.kutta_morino = (kutta == 4) and (
+            os.environ.get('WING3D_MORINO', '1') == '1')
+        s.tang_xc = float(os.environ.get('WING3D_TANG_XC', '0.75'))
+        s.tang_mode = os.environ.get('WING3D_TANG_MODE', 'gal')
         # the prescribed panel/LL bound sheet is replaced by the free one
         s.bound_ramp = False
         s.gamma_b = np.asarray(lifting_line_gamma(
@@ -129,9 +134,14 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             R[:, :, -1] = 0
         R[0, :, :] = 0   # inflow pinned by unpack, no equation needed
         if kutta:
-            # circulation rows: TE dCp(j) = 0, weighted to the phi-row
-            # Jacobian scale (measured, see tsd_kutta_weight.py)
-            Rk = s.kutta_residual(upstream=2) * s.kutta_w
+            # circulation rows: mode 1-3 TE dCp(j) = 0, mode 4 the
+            # TANGENCY row wav(x_cp) - (dyc/dx - alpha) per span cell
+            # (both weighted to the phi-row Jacobian scale, measured --
+            # see tests3d/tsd_kutta_weight.py and tsd_a10_probe.py)
+            if getattr(s, 'kutta_tangency', False):
+                Rk = s.tangency_residual() * s.kutta_w
+            else:
+                Rk = s.kutta_residual(upstream=2) * s.kutta_w
         elif free_k:
             Rk = s.kutta_residual(upstream=2) * 10.0
         else:
@@ -172,7 +182,17 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         supn = int(s._sup_mask().sum())
         if kutta:
             gmid = s.gamma_b[len(s.gamma_b) // 2]
-            kres = float(np.abs(s.kutta_residual(upstream=2)).max())
+            if getattr(s, 'kutta_tangency', False):
+                kres = float(np.abs(s.tangency_residual()).max())
+                _J = s.te_jump()
+                _jy = np.asarray(s.wing_jy)
+                jm = int(_jy[len(_jy) // 2])
+                morino = float(_J[jm] - s.gamma_b[len(s.gamma_b) // 2])
+                extra = ' tang=%.2e Morino d=%.2e' % (kres, morino)
+            else:
+                kres = float(np.abs(s.kutta_residual(upstream=2)).max())
+                morino = float('nan')
+                extra = ''
             cl_circ = 2.0 * float(np.sum(
                 s.gamma_b * s.dy[np.asarray(s.wing_jy)])) / (
                     s.chord * s.span)
@@ -180,10 +200,11 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
                                  'gamma_mid': float(gmid),
                                  'CL_circ': cl_circ,
                                  'kutta_max': kres, 'res_max': resn,
+                                 'morino_mid': morino,
                                  'nsup': supn})
             print('  ep %d: CL=%.4f (2$G dy/S=%.4f) G_mid=%.4f '
-                  'Kmax=%.2e |F|max=%.1e nsup=%d' % (
-                      ep, L['CL'], cl_circ, gmid, kres, resn, supn),
+                  'Kmax=%.2e |F|max=%.1e nsup=%d%s' % (
+                      ep, L['CL'], cl_circ, gmid, kres, resn, supn, extra),
                   flush=True)
         else:
             print('  ep %d: CL=%.4f k_mid=%.3f nsup=%d' % (
