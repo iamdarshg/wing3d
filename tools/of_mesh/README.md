@@ -92,3 +92,29 @@ convention). Next step: convert from the SU2 export instead
 (wing_strct.1.su2 is written by the generator) with a direct SU2->polyMesh
 writer, and re-run checkMesh. Do not trust any RANS result from this
 pipeline until checkMesh passes.
+
+## CORRECTION 2026-10-28 (retracts a wrong claim above)
+
+The earlier statement "identical bad numbers with NASA's own input, so it is
+the conversion" was WRONG -- it was a STALE FILE artefact. The generator
+writes a fixed filename; `input.nml_naca0012_round` uses `igrid_type = 4`
+(prism/hex, UNSTRUCTURED) and therefore writes no .p3d at all, so the .p3d
+converted the second time was still the M6 grid from the earlier run.
+
+Corrected facts:
+* `igrid_type = 5` (structured) -> .p3d   (the M6 case works this way)
+* `igrid_type = 4` (prism/hex)   -> .ugrid/.su2 only (NACA0012 built-in input)
+* ALWAYS `rm -f wing_strct.1.p3d` before regenerating, and check the
+  Reference area / Aspect ratio line -- it identifies which grid you got:
+    M6      : area 1.1531508, AR 3.7786
+    NACA0012: area 1.5000000, AR 3.0000
+* M6 structured .p3d -> plot3dToFoam: topology checks PASS, but 265 highly
+  skew faces (max skew 183) remain and rhoSimpleFoam aborts at iteration ~6.
+  The folded-cell problem is real for the structured PLOT3D route.
+* `tests3d/su2_to_of.py` (direct SU2 -> polyMesh) parses correctly
+  (124865 points / 122880 hexes; markers WING3D 1920, SYMMETRY 3072,
+  FARFIELD 1920) but yields 3072 illegal cells and 65 unused points,
+  i.e. face-key collisions -- most likely degenerate quads on the symmetry
+  plane (zero-thickness first layer). Needs a degeneracy guard: skip faces
+  whose sorted key already exists but with a different vertex multiset, and
+  drop zero-area quads before deduplication.
