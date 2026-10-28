@@ -251,26 +251,76 @@ class TSDSolver:
         #   balance the geometric slope), plus the MORINO wake condition
         #   Gamma_wake = phi_up(TE) - phi_lo(TE) (measured from the field
         #   instead of prescribed). See tests3d/a10_kutta_report.md.
+        # WING3D_KUTTA=5: FREE CHORDWISE DOUBLET DISTRIBUTION (doublet
+        #   lattice). A10 measured that one amplitude per span cell cannot
+        #   represent a chordwise tangency problem: the selected
+        #   circulation was set by the chordwise REDUCTION, not by
+        #   physics (pt -0.007 vs gal +0.019 against a cambered LL 0.172).
+        #   Here the unknown is the whole potential jump mu(i,j) at nc
+        #   chordwise control stations x ng span stations (nc*ng
+        #   unknowns), applied as a doublet sheet on the cut. The wake
+        #   trails the TE value of mu (Helmholtz). Closure: ONE TANGENCY
+        #   ROW PER (chordwise station, span station) --
+        #       wav(x_i, y_j) - (dyc/dx(x_i) - alpha) = 0
+        #   so every panel feels its OWN camber slope (LE and aft
+        #   loading both represented) and the TE row is the Kutta
+        #   condition. The chordwise loading shape is then the solution,
+        #   not a prescribed F(x). See tests3d/a11_kutta_report.md.
         try:
             self.kutta_mode = int(os.environ.get('WING3D_KUTTA', '0') or 0)
         except ValueError:
             self.kutta_mode = 0
         self.kutta_on = self.kutta_mode > 0
-        self.kutta_bound = self.kutta_mode in (1, 3, 4)  # bound sheet from Gamma
-        self.kutta_thick_only = self.kutta_mode in (1, 4)  # transpiration: dyt
+        # mode 5: free chordwise doublet distribution (mu matrix unknown)
+        self.kutta_free_mu = self.kutta_mode == 5
+        self.kutta_bound = self.kutta_mode in (1, 3, 4, 5)  # sheet from free amps
+        self.kutta_thick_only = self.kutta_mode in (1, 4, 5)  # transpiration: dyt
         # closure row family: 1-3 = TE loading dCp (A9), 4 = tangency
-        self.kutta_tangency = self.kutta_mode == 4
+        # reduced to one row per span cell, 5 = tangency per (panel,span)
+        self.kutta_tangency = self.kutta_mode in (4, 5)
         # Morino wake condition (mode 4): the wake doublet is the TE
         # potential jump the FIELD carries, not a prescribed copy of
         # gamma_b. WING3D_MORINO=0 turns it back into the prescribed wake
         # (used to measure whether the condition carries information).
         self.kutta_morino = (self.kutta_mode == 4) and (
             os.environ.get('WING3D_MORINO', '1') == '1')
+        # mode 5 Kutta row: the last chordwise control station is the TE
+        # itself, where the physics is the KUTTA condition (zero loading,
+        # dmu/dx -> 0), not tangency on a mean line that ends there.
+        # Collocating tangency at the TE instead makes the aft loading
+        # satisfy a local condition the continuum does not impose and
+        # leaves a TE loading spike (measured: gamma_TE = gamma_max for
+        # the dfvlr section). Replacing that row by mu(TE) = mu(last-1)
+        # removes the sqrt(1-x) eigensolution -- the standard discrete
+        # Kutta in doublet form. WING3D_KUTTA_TE=0 keeps the pure
+        # collocation (reported as the ablation).
+        self.kutta_te_kutta = (self.kutta_mode == 5) and (
+            os.environ.get('WING3D_KUTTA_TE', '1') == '1')
+        # weight of the Kutta row in mu units, commensurate with the
+        # tangency rows: MEASURED local self-response d wav / d mu =
+        # -6.1 per unit mu (tsd_a11_probe2.py, panels 6 and 11)
+        self.kutta_wte = float(os.environ.get('WING3D_KUTTA_WTE', '6.1'))
         self.tang_xc = float(os.environ.get('WING3D_TANG_XC', '0.75'))
         # 'gal' = loading-weighted chordwise reduction (default),
         # 'pt'  = single control station at tang_xc
         self.tang_mode = os.environ.get('WING3D_TANG_MODE', 'gal')
         self.gamma_b = np.zeros(len(self.wing_jy))
+        # ---- mode 5: free chordwise doublet distribution --------------
+        # mu_b[i,j] = potential jump (doublet strength) on chordwise
+        # control station i at span station j. Control stations are a
+        # SUBSET OF THE FIELD'S OWN chordwise nodes (WING3D_KUTTA_NC,
+        # default = all of them, 13 on g80), so the tangency rows read
+        # w_plane at nodes instead of interpolating a jump-contaminated
+        # estimator. The jump is then mapped back onto every wing node
+        # by linear interpolation along the chord.
+        self.n_ctrl = 0
+        self.i_ctrl = np.zeros(0, dtype=int)
+        self.x_ctrl = np.zeros(0)
+        self.mu_b = np.zeros((0, len(self.wing_jy)))
+        if self.kutta_free_mu:
+            self.init_free_mu()
+        # (mode 5 mu is initialised from the flat-plate/Lifting-line
+        # imprint in tests3d/tsd_m_sup.run_sup, like gamma_b in mode 4)
         # Kutta-row weight, measured against the phi-row Jacobian scale
         # (tests3d/tsd_kutta_weight.py, never an arbitrary 10): the weight
         # that puts |dR_kutt/dGamma| on the phi-row diagonal scale
@@ -280,7 +330,7 @@ class TSDSolver:
         # Mode 4 (tangency row): measured converged gain d wav/d Gamma =
         # -0.81 at the 0.75c control point (three converged phi solves,
         # tsd_a10_probe3.py), so w = A_scale/0.81 = 7.24e3/0.81 = 8.9e3.
-        _wd = {1: '50', 2: '1500', 3: '50', 4: '8.9e3'}.get(
+        _wd = {1: '50', 2: '1500', 3: '50', 4: '8.9e3', 5: '8.9e3'}.get(
             self.kutta_mode, '50')
         self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', _wd))
 
@@ -311,6 +361,35 @@ class TSDSolver:
         self.xc = xc
         self.yc = yc
         self.zc = 0.5 * (self.z[:-1] + self.z[1:])
+
+    def init_free_mu(self):
+        """(Re)build the mode-5 chordwise control-station set.
+
+        Control stations are a subset of the field's own wing nodes
+        (WING3D_KUTTA_NC, default = all 13 on g80), so the tangency rows
+        read w_plane at nodes rather than interpolating a
+        jump-contaminated estimator. mu_b is (n_ctrl, n_span).
+        """
+        self.kutta_free_mu = True
+        ni = len(self.wing_ix)
+        self.n_ctrl = 0
+        self.i_ctrl = np.zeros(0, dtype=int)
+        self.x_ctrl = np.zeros(0)
+        self.mu_b = np.zeros((0, len(self.wing_jy)))
+        if ni == 0:
+            return
+        try:
+            nc = int(os.environ.get('WING3D_KUTTA_NC', str(ni)))
+        except ValueError:
+            nc = ni
+        nc = max(2, min(nc, ni))
+        idx = np.unique(np.round(np.linspace(0, ni - 1, nc)).astype(int))
+        self.i_ctrl = idx
+        self.n_ctrl = len(idx)
+        # self.xc is built later in __init__, so take the node centres here
+        _xc = 0.5 * (self.x[:-1] + self.x[1:])
+        self.x_ctrl = _xc[np.asarray(self.wing_ix)[idx]] / self.chord
+        self.mu_b = np.zeros((self.n_ctrl, len(self.wing_jy)))
 
     def _coeff_A(self, phix):
         gm = self.gamma
@@ -523,6 +602,12 @@ class TSDSolver:
                     _Jte = self.te_jump()
                     self.wake_G = np.interp(
                         self.yc, self.yc[jy], _Jte[jy], left=0.0, right=0.0)
+                elif self.kutta_free_mu:
+                    # mode 5 Helmholtz: the wake trails the TE doublet
+                    # mu(x_TE, y) -- one value per span station.
+                    self.wake_G = np.interp(
+                        self.yc, self.yc[jy],
+                        self.mu_b[-1, :], left=0.0, right=0.0)
                 else:
                     self.wake_G = np.interp(
                         self.yc, self.yc[jy],
@@ -556,7 +641,16 @@ class TSDSolver:
             BK = np.tile(np.arange(len(self.wing_jy)),
                          (len(self.wing_ix), 1))
             xc = np.clip(self.xc[self.wing_ix] / self.chord, 0.0, 1.0)
-            if self.kutta_bound:
+            if self.kutta_free_mu:
+                # mode 5: free chordwise doublet distribution. mu_b is
+                # the potential jump at the nc control stations; map it
+                # onto every wing chordwise node (piecewise linear in x,
+                # clamped beyond the end stations).
+                jump = np.empty((len(self.wing_ix), len(self.wing_jy)))
+                for _p in range(len(self.wing_jy)):
+                    jump[:, _p] = np.interp(xc, self.x_ctrl,
+                                            self.mu_b[:, _p])
+            elif self.kutta_bound:
                 # free bound vortex: potential jump = F(x)*gamma_b(y),
                 # F(0)=0 at the LE, F(1)=1 at the TE (= the wake jump).
                 jump = flat_plate_jump(xc)[:, None] * self.gamma_b[None, :]
@@ -1213,6 +1307,74 @@ class TSDSolver:
             slope_c = 0.0
         w_geom = slope_c - self.alpha
         return np.array([wav[icp, j] for j in jy]) - w_geom
+
+    def tangency_panel_residual(self):
+        """Mode 5 closure: one tangency row per (panel, span station).
+
+            row[i, j] = wav(x_i, y_j) - (dyc/dx(x_i) - alpha)
+
+        i runs over the nc chordwise CONTROL stations (a subset of the
+        field's own wing nodes), j over the span cells. This is the
+        chordwise tangency problem itself, not a reduction of it: every
+        chordwise panel sees its own local surface slope, so the LE
+        region and the aft loading are both represented and the shape of
+        the chordwise loading is the solution instead of a prescribed
+        F(x). The TE row asks for zero aft loading at the last station --
+        that IS the Kutta condition in doublet form (dmu/dx -> 0 at the
+        TE).
+
+        Returns shape (nc, ng), scaled by kutta_w in the coupled
+        residual; flattened (i-major) to match the mu_b unknown layout.
+        """
+        k0 = self.k0
+        iu = np.asarray(self.wing_ix)
+        jy = np.asarray(self.wing_jy)
+        if len(iu) == 0 or len(jy) == 0 or self.n_ctrl == 0:
+            return np.zeros((0, len(jy)))
+        xc = self.xc[iu] / self.chord
+        _wu, _wl, wav = self.w_plane()
+        rows = np.zeros((self.n_ctrl, len(jy)))
+        for p in range(self.n_ctrl):
+            ip = int(iu[self.i_ctrl[p]])
+            x_at = float(xc[self.i_ctrl[p]])
+            if self.profile is not None:
+                slope_c = float(self.profile['camber'](x_at))
+            else:
+                slope_c = 0.0
+            rows[p, :] = wav[ip, jy] - (slope_c - self.alpha)
+        return rows
+
+    def mu_circulation(self):
+        """Section circulation Gamma(y) implied by the mu matrix.
+
+        FOR A CONTINUOUS doublet sheet the loading is gamma = dmu/dx and
+        the section circulation is gamma(1) - gamma(0) = mu(TE) - mu(LE);
+        with a discrete mu the same statement is the sum of the
+        chordwise increments. Reported so the mode-5 circulation can be
+        compared with the lifting line without a weight (CL_circ =
+        2*sum(Gamma*dy)/S, the same definition mode 4 uses).
+        """
+        if self.mu_b.size == 0:
+            return np.zeros(len(self.wing_jy))
+        return self.mu_b[-1, :] - self.mu_b[0, :]
+
+    def mu_loading(self):
+        """Chordwise loading gamma(x) = dmu/dx at each span station.
+
+        Returns (nc, ng) per-unit-length loading from the discrete mu
+        (forward differences between control stations). This is the
+        quantity a physical Kutta-satisfying section must show: peak
+        near the LE, falling to ~0 at the TE.
+        """
+        if self.mu_b.size == 0:
+            return np.zeros((0, len(self.wing_jy)))
+        xc = np.asarray(self.x_ctrl)
+        out = np.zeros_like(self.mu_b)
+        if len(xc) > 1:
+            out[:-1, :] = (np.diff(self.mu_b, axis=0)
+                           / np.diff(xc)[:, None])
+            out[-1, :] = out[-2, :]
+        return out
 
     def recirc_update(self, W=0.25, circff=None):
         """TSFOIL-style Kutta update (RECIRC).
