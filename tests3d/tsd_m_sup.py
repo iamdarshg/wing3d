@@ -121,9 +121,18 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             ep, L['CL'], s.k[len(s.k) // 2], supn), flush=True)
         if callback is not None:
             callback(ep, float(L['CL']), supn)
+        # viscous-inviscid coupling (WING3D_BL=1): after each inviscid
+        # epoch, re-march the integral BL on the current surface Cp and
+        # feed the relaxed displacement back through the wing
+        # transpiration; the next epoch re-solves the inviscid problem.
+        if getattr(s, 'bl_on', False):
+            s.bl_update(verbose=True)
     s._frozen = s._frozenA = s._frozenRho = None
     s._frozenRhon = None
     L = s.fp_loads()
+    if getattr(s, 'bl_on', False):
+        L['bl'] = {'hist': s.bl_hist, 'sep': s.bl_sep,
+                   'dstar_u': s.bl_dstar_u, 'dstar_l': s.bl_dstar_l}
     jy = np.asarray(s.wing_jy)
     j0 = jy[np.argmin(np.abs(s.yc[jy]))]
     ix = np.asarray(s.wing_ix)

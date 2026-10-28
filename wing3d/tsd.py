@@ -215,6 +215,19 @@ class TSDSolver:
         # every residual call, so "frozen" epochs chase a moving operator
         # (measured affinity drift 1.5e-2; perf audit 2026-10-22).
         self._frozenRhon = None
+        # ---- viscous-inviscid interaction (WING3D_BL=1) --------------
+        # Integral boundary layer marched on each span strip from the
+        # inviscid edge velocity; the displacement thickness delta*
+        # feeds back as transpiration (d(delta*)/dx) in _apply_wing_bc.
+        # Off by default so the inviscid baseline is bit-identical.
+        self.bl_on = os.environ.get('WING3D_BL', '0') == '1'
+        self.bl_relax = float(os.environ.get('WING3D_BL_RELAX', '0.5'))
+        self.bl_Re = float(os.environ.get('WING3D_RE', '1.8e7'))
+        self.bl_xtr = float(os.environ.get('WING3D_BL_XTR', '0.05'))
+        self.bl_dstar_u = None  # delta*/c per (wing_ix, wing_jy)
+        self.bl_dstar_l = None
+        self.bl_hist = []       # one dict per coupling iteration
+        self.bl_sep = []        # recorded separation events
         # metrics
         self.dx = np.diff(self.x)
         self.dy = np.diff(self.y)
@@ -505,9 +518,145 @@ class TSDSolver:
         # the stiff LE source robustly where SOR blew up.
         wu = slope_t + slope_c - self.alpha
         wl = -slope_t + slope_c - self.alpha
+        if self.bl_on and self.bl_dstar_u is not None:
+            # Viscous-inviscid coupling: the displacement surface thickens
+            # the effective body, y_s = y_c +- y_t +- delta*(x). The extra
+            # normal velocity is u_e * d(delta*)/dx, which in the same
+            # slope form as above is added to the upper surface and
+            # SUBTRACTED from the lower (delta* grows outward on both).
+            ddu, ddl = self._bl_slope()
+            wu = wu + ddu
+            wl = wl - ddl
         R[II, JJ, k0] += wu / dzp
         R[II, JJ, k0 - 1] += -wl / dzm
         return R
+
+    # ------------------------------------------------------------------
+    # viscous-inviscid interaction (integral boundary layer)
+    # ------------------------------------------------------------------
+    def _surf_edge(self):
+        """Edge speed / edge Mach on the wing plane, upper and lower.
+
+        Uses the same linear extrapolation to z=0 as loads()/fp_loads().
+        Returns dict with q ('u','l') = u_e/U_inf and me ('u','l') =
+        edge Mach, both shaped (len(wing_ix), len(wing_jy)).
+        """
+        k0 = self.k0
+
+        def gradx(k):
+            g = np.zeros((self.nx, self.ny))
+            g[1:-1] = (self.phi[2:, :, k] - self.phi[:-2, :, k]) / (
+                self.x[2:] - self.x[:-2])[:, None]
+            return g
+
+        def surf(k1, k2):
+            z1, z2 = self.z[k1], self.z[k2]
+            w = abs(z2) / max(abs(z2 - z1), 1e-12)
+            return w * gradx(k1) + (1 - w) * gradx(k2)
+
+        gxu = surf(min(k0 + 1, self.nz - 1), min(k0 + 2, self.nz - 1))
+        gxl = surf(max(k0 - 1, 0), max(k0 - 2, 0))
+        iu, jy = np.ix_(np.asarray(self.wing_ix), np.asarray(self.wing_jy))
+        gm = self.gamma
+        out = {}
+        for tag, g in (('u', gxu), ('l', gxl)):
+            q = np.maximum(1.0 + g[iu, jy], 1e-3)
+            # isentropic: T/T_inf = 1 + (g-1)/2 M^2 (1 - q^2)
+            tt = 1.0 + 0.5 * (gm - 1) * self.Minf ** 2 * (1.0 - q ** 2)
+            out[tag] = q
+            out['me_' + tag] = self.Minf * q / np.sqrt(np.maximum(tt, 0.2))
+        return out
+
+    def bl_march(self, Re=None, xtr=None):
+        """March an integral BL along every span strip (both surfaces).
+
+        Edge velocity comes from the inviscid surface gradient, densified
+        onto a fine chordwise grid (the TSD wing plane has only ~13
+        chordwise stations, too coarse to differentiate Ue directly).
+        Laminar Thwaites + Michel/fixed transition + Head entrainment
+        turbulent closure (wing3d/ibl.py). Returns delta*/c arrays.
+        """
+        from wing3d.ibl import solve_streamline
+        if Re is None:
+            Re = self.bl_Re
+        if xtr is None:
+            xtr = self.bl_xtr
+        ed = self._surf_edge()
+        xc = self.xc[np.asarray(self.wing_ix)] / self.chord
+        nf = 161
+        xf = np.linspace(xc[0], xc[-1], nf)
+        nu = 1.0 / max(Re, 1e-30)  # chord units, U_inf = 1
+        du = np.zeros((len(xc), len(self.wing_jy)))
+        dl = np.zeros_like(du)
+        seps = []
+        for tag, dst in (('u', du), ('l', dl)):
+            q = ed[tag]
+            me = ed['me_' + tag]
+            for jj in range(q.shape[1]):
+                ucol = np.interp(xf, xc, q[:, jj])
+                mcol = np.interp(xf, xc, me[:, jj])
+                # light smoothing: raw 13-point inviscid slopes are noisy
+                # enough to make dUe/dx (Thwaites lambda) oscillate
+                k = np.ones(5) / 5.0
+                ucol = np.convolve(np.pad(ucol, 2, mode='edge'), k,
+                                   mode='valid')
+                r = solve_streamline(xf, ucol, nu, x_tr_forced=xtr,
+                                     me=mcol)
+                dstar = np.maximum(r['dstar'], 0.0)
+                dst[:, jj] = np.interp(xc, xf, dstar)
+                if r['separated']:
+                    i_sep = int(r['i_sep']) if r['i_sep'] >= 0 else nf - 1
+                    seps.append({'side': tag, 'j': int(jj),
+                                 'y': float(self.yc[self.wing_jy[jj]]),
+                                 'x_sep': float(xf[min(i_sep, nf - 1)]),
+                                 'H': float(r['H'][min(i_sep, nf - 1)]),
+                                 'bubble': bool(r['bubble'])})
+        self.bl_sep = seps
+        return {'dstar_u': du, 'dstar_l': dl, 'sep': seps,
+                'Re': Re, 'xtr': xtr}
+
+    def _bl_slope(self):
+        """u_e * d(delta*)/dx on the wing plane (upper, lower)."""
+        xc = self.xc[np.asarray(self.wing_ix)] / self.chord
+        ed = self._surf_edge()
+        ddu = np.gradient(self.bl_dstar_u, xc, axis=0) * ed['u']
+        ddl = np.gradient(self.bl_dstar_l, xc, axis=0) * ed['l']
+        # diagnostic gain (like WING3D_JUMP_SCALE): lets the sensitivity
+        # dCL/d(displacement) be measured and the coupling checked for
+        # liveness. Default 1 = the physical term.
+        sc = float(os.environ.get('WING3D_BL_SCALE', '1'))
+        return ddu * sc, ddl * sc
+
+    def bl_update(self, relax=None, verbose=False):
+        """One viscous-inviscid coupling iteration.
+
+        Cp -> integral BL -> relaxed transpiration. Under-relaxed because
+        the displacement term is a fixed RHS source (the operator does
+        not see it), so the coupling is a plain fixed point and delta*
+        is a very stiff unknown on this coarse chordwise grid.
+        """
+        if relax is None:
+            relax = self.bl_relax
+        r = self.bl_march()
+        dnu, dnl = r['dstar_u'], r['dstar_l']
+        if self.bl_dstar_u is None:
+            ch = max(float(np.max(np.abs(dnu))), float(np.max(np.abs(dnl))))
+            self.bl_dstar_u = dnu.copy()
+            self.bl_dstar_l = dnl.copy()
+        else:
+            ch = max(float(np.max(np.abs(dnu - self.bl_dstar_u))),
+                     float(np.max(np.abs(dnl - self.bl_dstar_l))))
+            self.bl_dstar_u = (1 - relax) * self.bl_dstar_u + relax * dnu
+            self.bl_dstar_l = (1 - relax) * self.bl_dstar_l + relax * dnl
+        info = {'dstar_max': float(max(self.bl_dstar_u.max(),
+                                       self.bl_dstar_l.max())),
+                'change': ch, 'n_sep': len(r['sep']), 'sep': r['sep'],
+                'Re': r['Re'], 'xtr': r['xtr']}
+        self.bl_hist.append(info)
+        if verbose:
+            print('    BL: dstar*max/c=%.4e  d=%.2e  sep=%d' % (
+                info['dstar_max'], ch, info['n_sep']), flush=True)
+        return info
 
     def _apply_bc(self, upd):
         """Freeze outer-box phi (0 or prescribed farfield)."""

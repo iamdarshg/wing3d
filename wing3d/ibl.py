@@ -42,11 +42,6 @@ def head_H_of_H1(H1):
 
 
 def ludwieg_tillmann_cf(Re_theta, H):
-    cf = 0.246 * 10.0 ** (-0.678 * H) * max(Re_theta, 1.0) ** -0.268
-    return max(cf, 0.0)
-
-
-def ludwieg_tillmann_cf(Re_theta, H):
     cf = 0.246 * 10.0 ** (-0.678 * H) * max(Re_theta, 10.0) ** -0.268
     return max(cf, 0.0)
 
