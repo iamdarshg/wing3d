@@ -66,28 +66,34 @@ system).
 
 ## 3. Ladder A — low Mach M0.3, AR1.6, g80x32x32, ep4
 
-`WING3D_KUTTA=4`, symmetric section (`a10_dfvlr_r4_M0.300_k4_ep4_noprof.json`),
-'pt' row. Gamma trajectory (mid-span; LL 0.0407, LL CL 0.0545):
+`WING3D_KUTTA=4` (default 'gal' row), symmetric section
+(`a10_dfvlr_r4_M0.300_k4_ep4_noprof.json`). Gamma trajectory (mid-span;
+LL 0.0407, LL CL 0.0545):
 
 | ep | Gamma_mid | CL | CL_circ | tangency | |F|max |
 |---|---|---|---|---|---|
-| 0 | 0.0242 | 0.0390 | 0.0399 | 1.8e-8 | 5.1e-4 |
-| 1 | 0.0248 | 0.0397 | 0.0408 | 2.4e-9 | 1.4e-4 |
-| 2 | 0.0248 | 0.0397 | 0.0408 | 5.0e-11 | 1.0e-6 |
-| 3 | 0.0248 | 0.0397 | 0.0408 | 5.9e-12 | 4.5e-7 |
+| 0 | 0.0354 | 0.0541 | 0.0585 | 8.8e-9 | 5.3e-4 |
+| 1 | 0.0366 | 0.0555 | 0.0603 | 3.2e-9 | 5.3e-5 |
+| 2 | 0.0366 | 0.0555 | 0.0603 | 5.1e-10 | 6.5e-6 |
+| 3 | **0.0366** | **0.0556** | 0.0604 | 4.1e-12 | 1.4e-7 |
 
-A converged root (the row residual falls to 1e-11, not a convergence
-failure), at **61% of Gamma_LL and 73% of the LL CL** — a real positive
-lift, elliptic loading (test B), but 27% low. The row's control-point
-balance is exact: `wav = -0.0028 - 0.82*0.0248 = -0.0231` against the
-required `-alpha = -0.0218`.
+**Pass on the symmetric section**: `Gamma_mid` 0.0366 = **90% of
+Gamma_LL**, CL = **0.0556 vs 0.0545 (+2.0%)**, from a converged root
+(tangency residual 4e-12, |F| 1.4e-7). The pressure CL sits 8% below the
+circulation CL (0.0604) — the sheet's lift is slightly over-predicted by
+`2*int(gamma)dy/S`, the same 8-10% the A9 gamma-scan showed at
+Gamma_LL (0.0587 pressure vs 0.0637 circulation).
 
-Cambered dfvlr section, same run (`..._k4_ep4.json`): Gamma walks to
-**-0.0075** and CL to **-0.0052** — collapse. Cause measured, not
-guessed: `dyc/dx(0.75c) = +0.0251` for this section, so the single 0.75c
-station's geometric slope `(0.0251 - 0.0218) = +0.0033` is ~zero
-incidence, and the row correctly (for that station) returns ~zero
-circulation.
+The same run with the single-point ('pt') row instead gives
+`Gamma_mid` 0.0248 (61%), CL 0.0397 (73%) — the chordwise reduction moves
+the answer by 33%, see section 5.
+
+Cambered dfvlr section, same settings (`..._k4_ep4.json`): Gamma walks
+0.0178 -> 0.0188 and CL to **0.0296**, i.e. **11% of the cambered LL
+0.1722** — and, wrongly, *less* than the symmetric case: the A-weighted
+reduction samples the section's +0.145 leading-edge camber slope (table
+in section 5), so its real camber lift (thin-airfoil A1 = 0.148) is not
+what the row sees.
 
 ## 4. Test B — spanwise loading
 
@@ -96,9 +102,9 @@ symmetric case:
 
 | y/semi-span | 0.83 | 0.57 | 0.29 | 0 | 0.29 | 0.57 | 0.83 |
 |---|---|---|---|---|---|---|---|
-| this row (k4) | 0.63 | 0.85 | 0.96 | 1.00 | 0.98 | 0.88 | 0.67 |
+| this row (k4) | 0.638 | 0.856 | 0.962 | 1.000 | 0.978 | 0.885 | 0.673 |
 | A9 (dCp row) | 0.974 | 1.000 | 1.000 | 1.000 | 1.000 | 0.978 | 0.978 |
-| lifting line | 0.558 | 0.823 | 0.957 | 1.00 | 0.957 | 0.823 | 0.558 |
+| lifting line | 0.558 | 0.823 | 0.957 | 1.000 | 0.957 | 0.823 | 0.558 |
 
 The row is no longer span-flat (A9's ±3%) — the loading is now
 **elliptic in sign and shape** (tip/mid 0.65 vs 0.56 LL), because the
@@ -134,31 +140,94 @@ system). Then the chordwise loading shape is the solution, Kutta enters
 through the wake jump, and no reduction is needed. That is a
 redesign of the sheet representation, not another row weighting.
 
-## 6. Ladder B/C/D — transonic, BL, free_k
+## 6. Ladder B — transonic dfvlr 0.85/0.925/1.00, span 1.6, g80, ep8, ENTROPY=1
 
-PLACEHOLDER_B
-PLACEHOLDER_C
-PLACEHOLDER_D
+New free-tip AR1.6 anchors (B1 rebuild): 0.27186 / 0.26253 / 0.22694.
 
-## 7. Verdict
+| M | CL (this closure) | err vs anchor | Gamma_mid | tip/mid | converged? |
+|---|---|---|---|---|---|
+| 0.300 | 0.0296 | (no anchor) | 0.0188 | 0.65 | yes, \|F\| 9e-8 |
+| 0.850 | **0.03865** | **−85.8%** | 0.0242 | 0.63 | yes, \|F\| 3.2e-5 |
+| 0.925 | **0.03975** | **−84.9%** | 0.0234 | 0.64 | no, \|F\|max 3.6 |
+| 1.000 | **0.02564** | **−88.7%** | 0.0132 | 0.65 | no, \|F\|max 6.8 (nsup 62k) |
+
+CL sequence: 0.0296 (M0.3) → 0.0387 (M0.85) → 0.0398 (M0.925) → 0.0256
+(M1.0). The required signature is a monotone fall 0.272 → 0.263 → 0.227
+(−16.5%). What is measured is: **+31% compressibility lift growth up to
+M0.85, +2.8% to M0.925, then a −35.5% collapse from M0.925 to M1.00** —
+a transonic lift loss of twice the anchor's slope but starting one Mach
+late, and with Gamma falling 0.0234 → 0.0132 (−44%) as the supersonic
+pocket covers the chord (62k/82k nodes). A frozen circulation cannot do
+that; this closure can, and does. But at **−85% level error** the
+absolute agreement is not there, and M0.925/M1.0 are not converged
+(\|F\|max 3.6/6.8, Kmax 5e-6/4e-5) — reported as such, not as physics.
+
+Epoch stability: at M0.85 CL wanders 0.0307 → 0.0453 → 0.0387 over the 8
+epochs while each epoch's inner Newton solve is converged (\|F\| 1e-4,
+tangency 1e-9). The non-stationarity is the epoch re-freeze of the
+supersonic mask/entropy operator (nsup 21 → 179), not the closure row.
+
+## 7. Ladder C — dfvlr M0.85 + WING3D_BL=1
+
+| BL | CL | Gamma_mid | dstar/c max | sep | Δ |
+|---|---|---|---|---|---|
+| 0 | 0.03865 | 0.0242 | — | — | — |
+| 1 | 0.04034 | 0.0259 | 1.11e-3 | 0 | **+4.4% (+0.0017), Γ +7.0%** |
+
+The BL now acts on a *physical* circulation (it moves Gamma itself by
+7%, where A9's 5%-of-LL circulation barely responded), but the sign is
+the wrong one for a viscous correction: displacement thickening
+*increases* the circulation here by 7% instead of reducing it. With
+dstar/c = 1.1e-3 (a Re 1.8e7 turbulent BL at 14% chord-worth of
+thickening is plausible only for the short chordwise extent that is
+resolved) and no separation, this is a live but small and
+wrong-signed viscous effect — a finding, not a calibration.
+
+## 8. Ladder D — legacy free_k (mode 0, the A9 row, unchanged)
+
+| ep | k_mid | CL |
+|---|---|---|
+| 0 | 0.095 | 0.0381 |
+| 1 | **0.128** | 0.0384 |
+| 2 | 0.127 | 0.0386 |
+| 3 | 0.128 | 0.0388 |
+
+k = **0.128**, not ~1: the legacy `dCp(TE)` closure is untouched by this
+work and still collapses (A9 measured the same 0.128). The healthy k≈1
+is not reachable with that row; it is the same structural defect A9
+diagnosed, and mode 4 does not repair it.
+
+## 9. Verdict
 
 * The tangency row is genuine: it depends on phi, it has an O(1)
-  converged gain in Gamma, it is span-coupled, and the coupled Newton
-  system converges to 1e-11 residual instead of running away.
-* For a **symmetric** section it produces a physical, elliptic, stable
-  solution: Gamma 0.0248 (61% of LL), CL 0.0397 (73% of 0.0545),
-  tip/mid 0.65 (LL 0.56).
-* For a **cambered** section the answer is set by the chordwise
-  reduction (pt: −0.007, gal: +0.018, truth 0.172 for dfvlr), because one
-  row per span cell cannot carry the chordwise tangency problem.
-* The **Morino wake condition** is correct Helmholtz physics and is now
-  enforced from the field, but measured it is nearly an identity
-  (d/dgamma = 0.985) and is *not* what closes the system.
-* The wide-extrapolation normal velocity that a naive tangency row would
-  use reads `24.4*gamma` (jump/dz_core) — 100x the physical downwash
-  scale. Any pressure/gradient-sampled closure built on the stored
-  single-valued phi plane is dominated by that contamination; only the
-  symmetric first-order pair across the cut cancels it.
+  converged gain in Gamma (−0.61…−1.16 per span station), it is
+  span-coupled, and the coupled Newton system converges to a 1e-11
+  residual instead of running away.
+* For a **symmetric** section it is a *pass*: Gamma 0.0366 (90% of
+  Gamma_LL), **CL 0.0556 vs 0.0545 (+2.0%)**, loading elliptic
+  (tip/mid 0.66 vs 0.56 LL) — test A and test B in one run.
+* For a **cambered** section the selected amplitude is set by the
+  chordwise reduction, not by physics (pt: −0.007, gal: +0.019, truth
+  0.172), because one row per span cell cannot carry a chordwise
+  tangency problem; the camber's real contribution (thin-airfoil
+  A1 = 0.148) is not what an A(x)-weighted row samples (A-weighted
+  camber slope +0.127, dominated by the +0.145 LE cell).
+* **Morino wake condition**: correct Helmholtz physics, now enforced
+  from the field rather than prescribed, but measured nearly an identity
+  (d(te_jump)/dgamma = 0.985, residual 2e-4) — it is *not* what closes
+  the system.
+* Anything sampled from the stored single-valued phi plane is dominated
+  by the jump: the wide extrapolation reads 24.4·gamma = jump/dz_core,
+  100x the physical downwash scale. Only the symmetric first-order pair
+  across the cut cancels the ±J/2 offset; that measurement alone
+  rescues a tangency row from being meaningless.
+* **Is circulation now free? Partly.** It is a real unknown with a
+  well-conditioned, phi-dependent, span-coupled equation and a physical
+  solution for an uncambered section — but the equation is
+  under-determined in the chordwise direction, so any cambered section's
+  amplitude is an artefact of the reduction. The fix is a free
+  chordwise jump (`gamma(i,j)` per wing cell with nc·ng tangency rows —
+  a doublet-lattice/Morino system), not another row weight.
 
 Files: `wing3d/tsd.py` (`w_plane`, `te_jump`, `tangency_residual`,
 `kutta_tangency`, `kutta_morino`, `tang_mode`), `tests3d/tsd_m_sup.py`

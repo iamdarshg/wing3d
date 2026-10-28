@@ -1,0 +1,19 @@
+{
+ "geo": "dfvlr_r4",
+ "M": 0.85,
+ "grid": "80x32x32",
+ "epochs": 4,
+ "span": 1.6,
+ "mode": "0",
+ "entropy": "1",
+ "bl": "0",
+ "morino": "1",
+ "alpha_deg": 1.25,
+ "free_k": true,
+ "profile": true,
+ "CL": 0.038791402110757135,
+ "secs": 363.1856393814087,
+ "note": "free_k (legacy k-sheet)",
+ "anchor": 0.27186,
+ "err_pct": -85.73111082514635
+}
