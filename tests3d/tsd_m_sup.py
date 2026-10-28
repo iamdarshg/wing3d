@@ -73,7 +73,8 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         from tsd_coupled import lifting_line_gamma
         s.kutta_mode = kutta
         s.kutta_on = True
-        s.kutta_bound = (kutta == 1)
+        s.kutta_bound = kutta in (1, 3)
+        s.kutta_thick_only = (kutta == 1)
         # the prescribed panel/LL bound sheet is replaced by the free one
         s.bound_ramp = False
         s.gamma_b = np.asarray(lifting_line_gamma(

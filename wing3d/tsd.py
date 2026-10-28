@@ -240,16 +240,27 @@ class TSDSolver:
         # WING3D_KUTTA=2: transpiration keeps alpha+camber (the tangency
         #   condition IS the lifting problem), NO bound sheet, the wake
         #   sheet carries the free Gamma (classical TSD/TSFOIL wake).
+        # WING3D_KUTTA=3: bound sheet F(x)*Gamma + alpha/camber tangency
+        #   both present; the Kutta row selects the sheet amplitude
+        #   (the load split is then the sum, as in a VLM+thickness
+        #   decomposition).
         try:
             self.kutta_mode = int(os.environ.get('WING3D_KUTTA', '0') or 0)
         except ValueError:
             self.kutta_mode = 0
         self.kutta_on = self.kutta_mode > 0
-        self.kutta_bound = self.kutta_mode == 1
+        self.kutta_bound = self.kutta_mode in (1, 3)  # bound sheet from Gamma
+        self.kutta_thick_only = self.kutta_mode == 1  # transpiration: dyt only
         self.gamma_b = np.zeros(len(self.wing_jy))
         # Kutta-row weight, measured against the phi-row Jacobian scale
-        # (see tests3d/tsd_kutta_weight.py -- not an arbitrary 10).
-        self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', '50'))
+        # (tests3d/tsd_kutta_weight.py, never an arbitrary 10): the weight
+        # that puts |dR_kutt/dGamma| on the phi-row diagonal scale
+        # A_scale = 6.33e3 (g80x32x32, M0.3). Measured converged coupled
+        # gains |dCp(TE)/dGamma|: 1.18e2 (mode 1, thick-only + bound sheet)
+        # -> w=54; 4.72e0 (mode 2, free wake only) -> w=1.5e3.
+        _wd = {1: '50', 2: '1500', 3: '50'}.get(self.kutta_mode, '50')
+        self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', _wd))
+
         self._circff = None  # farfield circulation (wake interp target)
         self._frozenRho = None  # frozen face density (fullpot epochs)
         # frozen NODAL density (fullpot epochs). Without this the epoch
@@ -570,7 +581,7 @@ class TSDSolver:
             slope_c = np.zeros_like(slope_t)
         # NOTE: no cap here (cap kills LE suction); Newton-Krylov handles
         # the stiff LE source robustly where SOR blew up.
-        if self.kutta_bound:
+        if self.kutta_thick_only:
             # FREE-CIRCULATION MODE 1 (thickness-only tangency):
             # transpiration is the THICKNESS problem only (+dyt/dx upper,
             # -dyt/dx lower). The lifting problem (camber + alpha) is
