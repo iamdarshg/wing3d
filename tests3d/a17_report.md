@@ -63,11 +63,30 @@ with `J` known exactly. The decontaminated estimator is therefore
                pinned to the physical sheet ends) so that
                sum_i (dJ/dx)_i dx_i = J_TE = Gamma exactly
 
-and `J` is read from the field (`phi[k0]-phi[k0-1]`), not re-derived from
-the closure mode, so the estimator is mode-independent.  A plain nodal
-finite difference of `J` instead of the cell-integrated form loses the
-leading-edge cell (44% of `Gamma` on the stock 6-node chord): CL 0.0333 vs
-0.0483.
+and `J` is the jump the **solve was given** (`sheet_jump`: free mu sheet,
+`F(x)*gamma_b`, or the prescribed panel jump), not the field's own
+`phi[k0]-phi[k0-1]`. Measured why: the field jump is 18% low at the first
+chord node (0.00982 vs 0.01201) because the discrete field smears the
+LE-singular jump over the first cell; feeding it into the identity costs
+7% of CL and does not even stabilise the z-offset test (0.5 dz: -18.2%
+instead of -0.4%), since an off-plane sheet skews the measured jump too.
+The field jump is kept only as a fallback for the `ramp*wake_G` mode.
+
+Two checks that the estimator is now *exactly* consistent with the model
+(cached nz=16 field, `tmp_a17_bias.py`):
+
+| quantity | value | ratio to CL_circ |
+|---|---|---|
+| `2*int Gamma dy/S` (the model's own circulation) | 0.051562 | 1.0000 |
+| `loads()` CL, TSD order `Cp = -2 dphi/dx` | 0.051562 | **1.0000** |
+| `fp_loads()` CL, isentropic Cp | 0.048340 | 0.9375 |
+| `sum_i gamma_i dx_i / J_TE` | 1.0000 | — |
+
+So the decontaminated estimator reproduces the circulation the sheet
+carries *exactly*; the 6.25% that `fp_loads` sits below it is the
+isentropic pressure law at M0.3 (a constant at fixed M), not a dz effect
+and not an estimator error.
+
 
 ## 3. Acceptance A — dz sweep (g40x24x16, M0.3, AR1.6)
 
