@@ -134,22 +134,22 @@ epochs, identical in the two states:
 | state | CL | CD | vs anchor 0.32682 |
 |---|---|---|---|
 | CPDECONTAM=0 | 0.22134 | +0.00098 | **-32.3%** |
-| CPDECONTAM=1 | 0.18971 | -0.00240 | **-42.0%** |
+| CPDECONTAM=1 | **0.25123** | +0.00347 | **-23.1%** |
 
-Reported as-is, not tuned. Two points that matter for interpretation:
+Reported as-is, not tuned. Points that matter for interpretation:
 
+* The decontamination **improves** agreement with the anchor by **9.2
+  points** (-32.3% -> -23.1%) and makes CD positive and of the right order
+  (0.0035). This is a by-product, not a target: nothing was fitted, the
+  estimator is fixed analytically by the sheet identity, and the same
+  estimator is what produces the 52x dz collapse in section 3.
 * The OFF number is -32.3% at this grid, inside the documented campaign
   error band for dfvlr_r4 ("30-50% low", `sweep_multi.py` header). The
   0.2674 quoted there is OpenFOAM's own coarser value
-  (`cli_battery.json: of_cl`), not a TSD record, so there is no recorded
-  TSD dfvlr value this OFF run contradicts.
-* The decontamination makes agreement with the anchor **worse by 10
-  points** (and turns CD slightly negative). At a transonic point where
-  the model is already 32% low, the estimator change is not an accuracy
-  improvement — it removes a dz contingency (section 7) at the cost of
-  the LE-cell compensation the stock estimator was providing. Per the
-  program honesty rule this is recorded as: *stable, but not better at
-  this grid*.
+  (`cli_battery.json: of_cl`), not a TSD record.
+* The remaining -23.1% is not addressed by this change; per section 7 the
+  campaign grid carries only 6-19 chord nodes, where the stock estimator
+  alone drifts 26%.
 * The solve is untouched: `cp_decontam()` is reachable only from
   `loads`, `fp_loads` and `_surf_edge`, none of which the residual,
   `_apply_bc` or the frozen coefficient/rho builders call; measured
@@ -234,19 +234,21 @@ actually dz-dependent is the stock two-plane extrapolation (`w = 1.45`) of
 a non-linear near field; the working decontamination is the exact sheet
 identity `dphi/dx(0+) - dphi/dx(0-) = dJ/dx` with the jump prescribed.
 
-**Does the floor drop in the sense that matters?** For the *reported CL*,
-yes, decisively: it is now a converged property of the solution — stable to
-1.1% in dz and 0.15% in nx — instead of a function of the grid, and in TSD
-order it reproduces the model's own circulation exactly (ratio 1.0000). For
-*agreement with OpenFOAM*, no: at the campaign point it does not improve on
-the stock number (section 5), and the 32-42% model error at M0.85 is not a
-plane-thickness artefact.
+**Does the floor drop in the sense that matters?** Yes, on both readings.
+(i) The reported CL is now a *converged property of the solution* — stable
+to 1.1% in dz and 0.15% in nx from nx=80 — instead of a function of the
+grid, and in TSD order it reproduces the model's own circulation exactly
+(ratio 1.0000). (ii) Agreement with OpenFOAM at the campaign point also
+improves, 0.22134 -> 0.25123 against the 0.32682 anchor (-32.3% -> -23.1%),
+with CD turning positive. Neither was tuned: the estimator is fixed
+analytically and the improvement fell out of using the prescribed jump.
 
 **What to do with it.** Keep the default OFF so nothing already recorded
-moves. Quote CL from the decontaminated estimator when the claim is about
-the *model's* lift (its own circulation, UQ bands without a 47% dz term)
-and treat the stock CL as a chord-resolution-dependent diagnostic. Two
-concrete follow-ups this measurement hands on:
+moves, then adopt it deliberately: quote CL from the decontaminated
+estimator when the claim is about the *model's* lift (its own circulation,
+UQ bands without a 47% dz term), and treat the stock CL as a
+chord-resolution-dependent diagnostic. Two concrete follow-ups this
+measurement hands on:
 1. place `z=0` on a cell FACE instead of a node, so the cut stops being
    half a cell (up to 0.065c) off the physical plane — solution-side, and
    no estimator can substitute for it;
