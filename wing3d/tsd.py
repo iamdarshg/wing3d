@@ -1731,13 +1731,16 @@ class TSDSolver:
         WHY (measured, tests3d/a17_cpdecontam.py, g40x24x16 M0.3 AR1.6):
         the stock Cp comes from `gradx` differenced on the planes
         k0+-1, k0+-2 and linearly extrapolated to z=0 with the weight
-        w = |z2|/|z2-z1| > 1. That weight AMPLIFIES the near plane by
-        1 + dz1/dz2, so the reported Cp jump scales with the z
-        distribution: CL = 0.0703/0.0554/0.0536/0.0438 for nz =
-        12/16/24/32 (47.5% spread) and a rigid 0.25/0.50 dz offset moves
-        it -9.7%/+25.0%, while the circulation the mu sheet carries
-        (2*int Gamma dy/S) is 0.05156 at every nz (0.0% spread). The
-        whole spread is therefore in the ESTIMATOR, not the solution.
+        w = |z2|/|z2-z1| > 1 (1.45 on the stock grid). That is an
+        unbounded linear extrapolation of a field whose near-cut z
+        structure is not linear, so the reported Cp jump comes out as a
+        dz-dependent multiple of the sheet's true jump: CL =
+        0.0703/0.0554/0.0536/0.0438 for nz = 12/16/24/32 (47.5% spread)
+        and a rigid 0.25/0.50 dz offset moves it -9.7%/+25.0%, while the
+        circulation the mu sheet carries (2*int Gamma dy/S) is 0.05156 at
+        every nz (0.0% spread) and max|dphi| between the OFF and ON runs
+        is 0.0. The whole spread is therefore in the ESTIMATOR, not the
+        solution.
 
         What is NOT true: the stored phi does not carry a +-J/2 offset.
         Measured, phi[k0] - phi[k0-1] equals the prescribed jump J to 2%
@@ -1852,9 +1855,15 @@ class TSDSolver:
         gxl = gxu.copy()
         BI = np.ix_(np.asarray(self.wing_ix), np.asarray(self.wing_jy))
         gxl[BI] = gxu[BI] - gj
+        cpu = cpu.copy()
+        cpl = cpl.copy()
         if cp_from_g is None:
-            return -2 * gxu, -2 * gxl
-        return cp_from_g(gxu), cp_from_g(gxl)
+            cpu[BI] = -2 * gxu[BI]
+            cpl[BI] = -2 * gxl[BI]
+        else:
+            cpu[BI] = cp_from_g(gxu)[BI]
+            cpl[BI] = cp_from_g(gxl)[BI]
+        return cpu, cpl
 
     def loads(self):
         """Thin-wing loads: lift from Cp jump, drag from Cp on local slope.

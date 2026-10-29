@@ -119,6 +119,25 @@ def study_C():
     return recs
 
 
+def study_D():
+    """Chordwise refinement at fine dz: is ON biased, or is OFF compensating?
+
+    The stock extrapolation also (accidentally) recovers part of the
+    unresolved leading-edge suction cell on the 6-node chord, so the
+    decontaminated CL is 13% below the stock number at nz=16. If the two
+    estimators converge as nx grows, ON is the right one and OFF was a
+    dz-dependent compensation; if the gap persists, ON is biased low.
+    nz=32 is used because its sheet placement is the cleanest of the set
+    (|z_sheet| = 0.007c).
+    """
+    print('--- D: chord refinement, nz=32, M0.3 AR1.6 KUTTA=6 ---', flush=True)
+    recs = []
+    for nx in (40, 80, 120):
+        r = _off_on(dict(nz=32, grid=(nx, 24, 32)), 'nx=%d' % nx)
+        recs.append(r)
+    return recs
+
+
 if __name__ == '__main__':
     what = (sys.argv[1] if len(sys.argv) > 1 else 'all').upper()
     res = {}
@@ -127,7 +146,8 @@ if __name__ == '__main__':
             res = json.load(open(OUT))
         except Exception:
             res = {}
-    for key, fn in (('A', study_A), ('B', study_B), ('C', study_C)):
+    for key, fn in (('A', study_A), ('B', study_B), ('C', study_C),
+                    ('D', study_D)):
         if what in (key, 'ALL'):
             res[key] = fn()
     json.dump(res, open(OUT, 'w'), indent=1)
