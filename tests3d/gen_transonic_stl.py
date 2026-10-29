@@ -12,6 +12,7 @@ through ~200 spanwise layers on a slab => ~140k vertices.
 """
 import numpy as np
 import os
+import sys
 
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
                     'cases', 'openfoam', 'transonic', 'stl')
@@ -23,6 +24,92 @@ def naca0012_xy(n=350, t=0.12):
     yt = 5 * t * (0.2969 * np.sqrt(x) - 0.1260 * x - 0.3516 * x ** 2
                   + 0.2843 * x ** 3 - 0.1036 * x ** 4)
     return x, yt
+
+
+def _monotone_x(x, y):
+    """Make a surface single-valued in x (ascending, unique abscissa).
+
+    The standard NACA 4-digit formula overhangs the leading edge by
+    ~3e-4 c (x_surface = x - yt*sin(theta) goes slightly negative before
+    turning back), which makes the abscissa non-monotone.  np.interp
+    assumes ascending xp, so fold the overhang into the LE point rather
+    than feeding it an unsorted array.  Geometry is unchanged elsewhere.
+    """
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    o = np.argsort(x, kind='stable')
+    x, y = x[o], y[o]
+    # average y at repeated x (the LE overhang collapses to a point)
+    xu, inv = np.unique(x, return_inverse=True)
+    if len(xu) == len(x):
+        return x, y
+    yu = np.zeros_like(xu)
+    cnt = np.zeros_like(xu)
+    np.add.at(yu, inv, y)
+    np.add.at(cnt, inv, 1.0)
+    return xu, yu / np.maximum(cnt, 1.0)
+
+
+def naca4_xy(m=0.0, p=0.4, t=0.12, n=350):
+    """Standard NACA 4-digit section: thickness distribution + camber line.
+
+    Returns (xu, yu, xl, yl), chord-normalised, LE->TE on both surfaces
+    (same convention as rae2822_xy / dfvlr_r4_xy).  m = max camber
+    (fraction of chord), p = position of max camber (fraction of chord),
+    t = max thickness (fraction of chord).  Closed trailing edge
+    (-0.1036 x^4, the classic form) so this matches naca0012_xy.
+    """
+    beta = np.linspace(0, np.pi, n)
+    x = 0.5 * (1 - np.cos(beta))                       # cosine clustering
+    yt = 5 * t * (0.2969 * np.sqrt(x) - 0.1260 * x - 0.3516 * x ** 2
+                  + 0.2843 * x ** 3 - 0.1036 * x ** 4)
+    if m == 0.0:
+        yc = np.zeros_like(x)
+        dyc = np.zeros_like(x)
+    else:
+        fwd = x <= p
+        yc = np.where(fwd,
+                      m / p ** 2 * (2 * p * x - x ** 2),
+                      m / (1 - p) ** 2 * ((1 - 2 * p) + 2 * p * x - x ** 2))
+        dyc = np.where(fwd,
+                       2 * m / p ** 2 * (p - x),
+                       2 * m / (1 - p) ** 2 * (p - x))
+    th = np.arctan(dyc)
+    xu = x - yt * np.sin(th)
+    yu = yc + yt * np.cos(th)
+    xl = x + yt * np.sin(th)
+    yl = yc - yt * np.cos(th)
+    return xu, yu, xl, yl
+
+
+def naca2412_xy(n=350):
+    """NACA 2412: m=0.02, p=0.4, t=0.12."""
+    return naca4_xy(m=0.02, p=0.4, t=0.12, n=n)
+
+
+def naca4412_xy(n=350):
+    """NACA 4412: m=0.04, p=0.4, t=0.12."""
+    return naca4_xy(m=0.04, p=0.4, t=0.12, n=n)
+
+
+def section_metrics(xu, yu, xl, yl):
+    """Measured t/c and max camber of a section (chord-normalised).
+
+    t/c is taken as max over x of (upper - lower) sampled on a fine
+    cosine grid; camber as max of the mean line.  The measured values
+    are *not* forced to the nominal ones -- that is the point.
+    """
+    xg = 0.5 * (1 - np.cos(np.linspace(0, np.pi, 40001)))
+    o = np.argsort(xu)
+    yu_g = np.interp(xg, np.asarray(xu)[o], np.asarray(yu)[o])
+    o = np.argsort(xl)
+    yl_g = np.interp(xg, np.asarray(xl)[o], np.asarray(yl)[o])
+    thk = yu_g - yl_g
+    mean = 0.5 * (yu_g + yl_g)
+    imax = int(np.argmax(thk))
+    icam = int(np.argmax(mean))
+    return {'tc': float(thk[imax]), 'tc_x': float(xg[imax]),
+            'camber': float(mean[icam]), 'camber_x': float(xg[icam])}
 
 
 def rae2822_xy():
@@ -406,6 +493,25 @@ def naca_loop(n=350, t=0.12):
     return np.vstack([up, lo])
 
 
+def naca4_loop(m, p, t=0.12, n=350):
+    """Cambered NACA 4-digit section as a CLOSED loop (TE->LE up, LE+1->TE
+    low), i.e. the same winding as rae_loop / dfvlr_loop."""
+    xu, yu, xl, yl = naca4_xy(m=m, p=p, t=t, n=n)
+    xu, yu = _monotone_x(xu, yu)
+    xl, yl = _monotone_x(xl, yl)
+    up = np.stack([xu, yu], axis=1)[::-1]   # TE -> LE upper
+    lo = np.stack([xl, yl], axis=1)[1:]     # LE+1 -> TE lower
+    return np.vstack([up, lo])
+
+
+def naca2412_loop(n=350):
+    return naca4_loop(0.02, 0.4, n=n)
+
+
+def naca4412_loop(n=350):
+    return naca4_loop(0.04, 0.4, n=n)
+
+
 def rae_loop():
     """RAE2822 section as a CLOSED loop: upper TE->LE, then lower LE->TE.
 
@@ -428,7 +534,8 @@ def biconv_loop(n=350, t=0.08):
 
 def main():
     os.makedirs(BASE, exist_ok=True)
-    suite = [('naca0012', naca_loop()), ('rae2822', rae_loop()),
+    suite = [('naca0012', naca_loop()), ('naca2412', naca2412_loop()),
+             ('naca4412', naca4412_loop()), ('rae2822', rae_loop()),
              ('biconvex', biconv_loop()), ('dfvlr_r4', dfvlr_loop())]
     for name, loop in suite:
         verts, tris = extruded_slab_stl(loop, span=1.6, n_span=220)
@@ -441,4 +548,20 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == 'verify':
+        for nm, fn in (('naca0012', naca0012_xy), ('naca2412', naca2412_xy),
+                       ('naca4412', naca4412_xy), ('rae2822', rae2822_xy),
+                       ('dfvlr_r4', dfvlr_r4_xy)):
+            xy = fn()
+            if len(xy) == 2:                       # symmetric half-thickness
+                xa, yt = xy
+                xy = (xa, yt, xa, -yt)
+            mt = section_metrics(*xy)
+            print('%-9s t/c=%.5f at x/c=%.4f  camber=%.5f at x/c=%.4f' % (
+                nm, mt['tc'], mt['tc_x'], mt['camber'], mt['camber_x']))
+        xa, ya = biconvex_xy()
+        mt = section_metrics(xa, ya, xa, -ya)
+        print('%-9s t/c=%.5f at x/c=%.4f  camber=%.5f at x/c=%.4f' % (
+            'biconvex', mt['tc'], mt['tc_x'], mt['camber'], mt['camber_x']))
+    else:
+        main()
