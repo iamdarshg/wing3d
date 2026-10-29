@@ -113,7 +113,33 @@ artefact. The offset that leaves `dz` unchanged (0.25 dz) is -0.1%.
 
 ## 5. Acceptance C — campaign regression
 
-<!--C-->
+## 5. Acceptance C — campaign regression (dfvlr_r4, M0.85, g80x32x32, ep8)
+
+`WING3D_IMPRINT=ll`, `WING3D_ENTROPY=1`, `WING3D_KUTTA=0`, `WING3D_BL=0`
+(`sweep_multi.apply_validated_env`), built at M0.3 then run at M0.85 for 8
+epochs, identical in the two states:
+
+| state | CL | CD | vs anchor 0.32682 |
+|---|---|---|---|
+| CPDECONTAM=0 | 0.22134 | +0.00098 | **-32.3%** |
+| CPDECONTAM=1 | 0.18971 | -0.00240 | **-42.0%** |
+
+Reported as-is, not tuned. Two points that matter for interpretation:
+
+* The OFF number is -32.3% at this grid, inside the documented campaign
+  error band for dfvlr_r4 ("30-50% low", `sweep_multi.py` header). The
+  0.2674 quoted there is OpenFOAM's own coarser value
+  (`cli_battery.json: of_cl`), not a TSD record, so there is no recorded
+  TSD dfvlr value this OFF run contradicts.
+* The decontamination makes agreement with the anchor **worse by 10
+  points** (and turns CD slightly negative). At a transonic point where
+  the model is already 32% low, the estimator change is not an accuracy
+  improvement — it removes a dz contingency (section 7) at the cost of
+  the LE-cell compensation the stock estimator was providing. Per the
+  program honesty rule this is recorded as: *stable, but not better at
+  this grid*.
+
+
 
 ## 6. Where the residual ON spread comes from: the sheet placement
 
