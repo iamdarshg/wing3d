@@ -115,10 +115,38 @@ artefact. The offset that leaves `dz` unchanged (0.25 dz) is -0.1%.
 
 <!--C-->
 
-## 6. Acceptance D — chord refinement
+## 6. Where the residual ON spread comes from: the sheet placement
+
+The cut is a face, so unless `z=0` is a face centre the model's wing is
+displaced. With `z_face = z[k0] - dz_below/2` and every A and B case:
+
+| case | z_face | CL OFF | CL ON |
+|---|---|---|---|
+| nz=32 | -0.0074 | 0.04380 | 0.04827 |
+| zoff=0.25dz | -0.0101 | 0.05003 | 0.04886 |
+| nz=16 / zoff=0.00 | -0.0203 | 0.05541 | 0.04891 |
+| nz=24 | -0.0231 | 0.05358 | 0.04760 |
+| nz=12 | -0.0588 | 0.07029 | 0.04345 |
+| zoff=0.50dz | -0.0653 | 0.06926 | 0.03999 |
+
+`CL_ON = 0.0508 - 0.143*|z_face|`, fit residual **±0.0015** (3% of 0.048)
+across all seven cases, which span 19.2% of CL. One geometric quantity —
+the distance from the physical plane to where the model actually puts its
+sheet — explains essentially all of the remaining ON variation, and it is a
+*solution/geometry* term: no estimator can undo it without pretending the
+wing sits somewhere it does not. The OFF numbers correlate with `z_face`
+only weakly (0.04380 at the best placement, 0.07029 at a bad one, but
+0.05358 in between) — that is the estimator noise this change removes.
+
+The solution-side fix (out of scope here, needs grid surgery and would
+break every recorded bit-identity) is to place `z=0` on a **face** rather
+than a node, i.e. an even number of z-nodes per half-box, which makes
+`z_face = 0` exactly and removes the -0.143*c slope from the model.
+
+
+
+## 7. Acceptance D — chord refinement
 
 <!--D-->
 
-## 7. Verdict
 
-<!--V-->
