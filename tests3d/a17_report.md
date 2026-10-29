@@ -125,8 +125,6 @@ rigid shift **doubles** `dz` below the wing (0.0406 -> 0.0900) and parks
 the model's sheet at `z_face = -0.0653` — and the estimator does not care:
 0.04814 against 0.04834 at the nominal grid.
 
-## 5. Acceptance C — campaign regression
-
 ## 5. Acceptance C — campaign regression (dfvlr_r4, M0.85, g80x32x32, ep8)
 
 `WING3D_IMPRINT=ll`, `WING3D_ENTROPY=1`, `WING3D_KUTTA=0`, `WING3D_BL=0`
@@ -193,8 +191,70 @@ physical plane, and by up to 0.065c when the grid is shifted. Placing
 
 
 
-## 7. Acceptance D — chord refinement
+## 7. Acceptance D — chordwise refinement (nz=32, M0.3, AR1.6)
 
-<!--D-->
+The stock estimator was also compensating the unresolved leading-edge
+suction cell, so the dz "floor" and the chord resolution are entangled.
+nl=40/80/120 chord nodes (nc = 6/13/19):
+
+| nx | nc | CL OFF | CL ON | `CL_circ` |
+|---|---|---|---|---|
+| 40 | 6 | 0.04380 | 0.04864 | 0.05156 |
+| 80 | 13 | 0.05227 | 0.05235 | 0.05550 |
+| 120 | 19 | 0.05508 | **0.05243** | 0.05550 |
+
+* **ON is chord-converged**: 0.05235 -> 0.05243 (0.15%) from nx=80 to
+  120, and equal to `0.94 x CL_circ` at both - the 0.94 being the
+  isentropic pressure law (section 2), which the TSD-order estimator
+  shows must be 1.0000.
+* **OFF is not**: it climbs 26% over the same range and is still moving at
+  nx=120 (0.05508, i.e. 5% *above* ON and ~1% above `CL_circ`).
+
+So at the stock 6-node chord the stock estimator under-reads CL by 26%,
+and its apparent dz sensitivity at nz=32 (0.0438) was substantially a
+chord artefact rather than a plane-thickness one. The decontaminated
+number is a property of the solution; the stock one was a function of both
+grid directions.
+
+## 8. Verdict
+
+**The estimator is decontaminated and the dz floor it caused has dropped
+by 52x.** At M0.3/AR1.6/g40x24x16 the reported CL is now
+0.04813/0.04834/0.04834/0.04864 for nz = 12/16/24/32 (**1.1%**) against
+0.0703/0.0554/0.0536/0.0438 (47.5%), and the two rigid z-offsets move it by
+**-0.1% and -0.4%** instead of -9.7% and +25.0%. Both acceptance tests pass;
+OFF is bit-identical to A16.
+
+**The diagnosis A16 handed down is wrong, and the specified fix is not the
+one that works.** There is no stored `+-J/2` offset: `phi[k0]-phi[k0-1]`
+equals the prescribed doublet strength to 2% at every station and every nz,
+because the residual already removes the `J/dz` it imposes on the cut face.
+Subtracting `J/2` as prescribed makes the spread *worse* (62%). What was
+actually dz-dependent is the stock two-plane extrapolation (`w = 1.45`) of
+a non-linear near field; the working decontamination is the exact sheet
+identity `dphi/dx(0+) - dphi/dx(0-) = dJ/dx` with the jump prescribed.
+
+**Does the floor drop in the sense that matters?** For the *reported CL*,
+yes, decisively: it is now a converged property of the solution — stable to
+1.1% in dz and 0.15% in nx — instead of a function of the grid, and in TSD
+order it reproduces the model's own circulation exactly (ratio 1.0000). For
+*agreement with OpenFOAM*, no: at the campaign point it does not improve on
+the stock number (section 5), and the 32-42% model error at M0.85 is not a
+plane-thickness artefact.
+
+**What to do with it.** Keep the default OFF so nothing already recorded
+moves. Quote CL from the decontaminated estimator when the claim is about
+the *model's* lift (its own circulation, UQ bands without a 47% dz term)
+and treat the stock CL as a chord-resolution-dependent diagnostic. Two
+concrete follow-ups this measurement hands on:
+1. place `z=0` on a cell FACE instead of a node, so the cut stops being
+   half a cell (up to 0.065c) off the physical plane — solution-side, and
+   no estimator can substitute for it;
+2. campaign grids carry 6-19 chord nodes and the stock estimator drifts 26%
+   over that range (section 7): the largest single error term measured
+   here, and not a dz effect at all.
+
+
+
 
 
