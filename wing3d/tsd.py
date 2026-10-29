@@ -273,20 +273,31 @@ class TSDSolver:
         #   instead of the field-differentiated w_plane estimator that A11
         #   measured to be 3.7x chordwise-biased. D.mu = dyc/dx - alpha is
         #   LINEAR in mu. See tests3d/a12_kutta_report.md.
+        # WING3D_KUTTA=7: HYBRID row -- the field-induced normal velocity
+        #   with the estimator's chordwise bias subtracted analytically
+        #     row = w_field(phi) - [E - D].mu - (dyc/dx - alpha)
+        #   E is w_plane's own estimator evaluated on the SAME mu (the
+        #   horseshoe field sampled at w_plane's two stencil heights), D is
+        #   mode 6's validated kernel. E - D is a FIXED grid/kernel matrix,
+        #   so the row is linear in mu and DEPENDS ON phi (mode 6's mu
+        #   block was phi-independent -> block-triangular Jacobian -> no
+        #   transonic circulation response). See tests3d/a13_kutta_report.md.
         try:
             self.kutta_mode = int(os.environ.get('WING3D_KUTTA', '0') or 0)
         except ValueError:
             self.kutta_mode = 0
         self.kutta_on = self.kutta_mode > 0
-        # mode 5/6: free chordwise doublet distribution (mu matrix unknown)
-        self.kutta_free_mu = self.kutta_mode in (5, 6)
-        # mode 6: analytic doublet-lattice kernel for the tangency rows
-        self.kutta_kernel = self.kutta_mode == 6
-        self.kutta_bound = self.kutta_mode in (1, 3, 4, 5, 6)  # sheet from free amps
-        self.kutta_thick_only = self.kutta_mode in (1, 4, 5, 6)  # transpiration: dyt
+        # mode 5/6/7: free chordwise doublet distribution (mu matrix unknown)
+        self.kutta_free_mu = self.kutta_mode in (5, 6, 7)
+        # mode 6/7: analytic doublet-lattice kernel for the tangency rows
+        self.kutta_kernel = self.kutta_mode in (6, 7)
+        # mode 7: hybrid field/kernel tangency row (phi-coupled mu block)
+        self.kutta_hybrid = self.kutta_mode == 7
+        self.kutta_bound = self.kutta_mode in (1, 3, 4, 5, 6, 7)  # sheet from free amps
+        self.kutta_thick_only = self.kutta_mode in (1, 4, 5, 6, 7)  # transpiration: dyt
         # closure row family: 1-3 = TE loading dCp (A9), 4 = tangency
-        # reduced to one row per span cell, 5/6 = tangency per (panel,span)
-        self.kutta_tangency = self.kutta_mode in (4, 5, 6)
+        # reduced to one row per span cell, 5/6/7 = tangency per (panel,span)
+        self.kutta_tangency = self.kutta_mode in (4, 5, 6, 7)
         # Morino wake condition (mode 4): the wake doublet is the TE
         # potential jump the FIELD carries, not a prescribed copy of
         # gamma_b. WING3D_MORINO=0 turns it back into the prescribed wake
@@ -303,7 +314,7 @@ class TSDSolver:
         # removes the sqrt(1-x) eigensolution -- the standard discrete
         # Kutta in doublet form. WING3D_KUTTA_TE=0 keeps the pure
         # collocation (reported as the ablation).
-        self.kutta_te_kutta = (self.kutta_mode in (5, 6)) and (
+        self.kutta_te_kutta = (self.kutta_mode in (5, 6, 7)) and (
             os.environ.get('WING3D_KUTTA_TE', '1') == '1')
         # weight of the Kutta row in mu units, commensurate with the
         # tangency rows: MEASURED local self-response d wav / d mu =
@@ -356,8 +367,13 @@ class TSDSolver:
         # conditioning and cannot move the root: kutta_w multiplies both
         # the mu rows and the Kutta row of the same linear block, so it
         # scales rows of a system whose solution is unchanged.
+        # Mode 7 (hybrid row) is NOT of that kind: the mu block now depends
+        # on phi, so this weight trades the tangency rows against the TSD
+        # rows and can move the root. 8.9e3 is inherited from mode 6 (same
+        # velocity units, same A_scale construction); the sensitivity of
+        # the answer to it is reported as an ablation, not tuned.
         _wd = {1: '50', 2: '1500', 3: '50', 4: '8.9e3', 5: '8.9e3',
-               6: '8.9e3'}.get(self.kutta_mode, '50')
+               6: '8.9e3', 7: '8.9e3'}.get(self.kutta_mode, '50')
         self.kutta_w = float(os.environ.get('WING3D_KUTTA_W', _wd))
 
         self._circff = None  # farfield circulation (wake interp target)
@@ -399,6 +415,9 @@ class TSDSolver:
         self.kutta_free_mu = True
         self._dlmK = None
         self._dlmInfo = None
+        self._dlmE = None      # mode 7: estimator-applied-to-sheet operator
+        self._dlmL = None      # mode 7: field-node -> lattice-control map
+        self._hybB = None      # mode 7: bias operator L.E - D
         ni = len(self.wing_ix)
         self.n_ctrl = 0
         self.i_ctrl = np.zeros(0, dtype=int)
@@ -1545,6 +1564,237 @@ class TSDSolver:
             w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
             g[-1, :] = 0.0
         return w - g
+
+    # ------------------------------------------------------------------
+    # mode 7: HYBRID row -- w_field(phi) - (E - D).mu
+    # ------------------------------------------------------------------
+    def _stencil_heights(self):
+        """The two z that `w_plane` actually samples (its own geometry).
+
+        wu = (phi[k0+1]-phi[k0])/(z[k0+1]-z[k0]) is a first-order
+        difference about the cell centre (z[k0]+z[k0+1])/2, and wl about
+        (z[k0-1]+z[k0-2])/2; a one-sided difference of a smooth potential
+        IS the normal velocity at the cell centre. So those two heights are
+        where the estimator reads w, and they are what E must be sampled
+        at for the bias to cancel. On g80 they are +0.0074c (above the
+        sheet) and -0.0246c (below), i.e. NOT symmetric: that asymmetry is
+        the estimator's, and it has to be reproduced, not idealised.
+        """
+        k0 = self.k0
+        kp = min(k0 + 1, self.nz - 1)
+        km = max(k0 - 2, 0)
+        return (0.5 * (self.z[kp] + self.z[k0]),
+                0.5 * (self.z[k0 - 1] + self.z[km]))
+
+    def dlm_field_equivalent(self, rebuild=False):
+        """E_node = `w_plane`'s estimator applied to the analytic sheet.
+
+        Rows are the FIELD's own wing nodes (x_c[iu], y_c[jy]) -- exactly
+        the points `w_plane()` returns -- and columns are the same mu
+        layout as D. Shape (n_node*ng, nc*ng). Each row is the mean of the
+        horseshoe downwash sampled at `_stencil_heights()`, i.e. the same
+        two-z average `wav = 0.5*(wu+wl)` takes, built from the same
+        Biot-Savart source as D (`ckernels.loop_vel_block`). It is a pure
+        function of the grid and the panel lattice: no solution enters.
+        """
+        if getattr(self, '_dlmE', None) is not None and not rebuild:
+            return self._dlmE
+        if getattr(self, '_dlmInfo', None) is None:
+            self.dlm_kernel()
+        info = self._dlmInfo
+        if info is None:
+            self._dlmE = np.zeros((0, 0))
+            return self._dlmE
+        from .ckernels import loop_vel_block
+        nc, ng = info['nc'], info['ng']
+        seg = info['seg']
+        ed = seg[:, None, :, :]
+        emask = np.ones((len(seg), 1), dtype=bool)
+        iu = np.asarray(self.wing_ix)
+        jy = np.asarray(self.wing_jy)
+        xN = np.asarray(self.xc[iu], dtype=float)
+        yN = np.asarray(self.yc[jy], dtype=float)
+        z_up, z_lo = self._stencil_heights()
+        nn = len(xN)
+        P = np.zeros((nn * ng, 3))
+        for i in range(nn):
+            P[i * ng:(i + 1) * ng, 0] = xN[i]
+            P[i * ng:(i + 1) * ng, 1] = yN
+        P[:, 2] = z_up
+        w = loop_vel_block(P, ed, emask)[:, :, 2]
+        P[:, 2] = z_lo
+        w = w + loop_vel_block(P, ed, emask)[:, :, 2]
+        S = np.zeros((len(seg), nc * ng))
+        S[np.arange(len(seg)), info['col']] = info['wgt']
+        DG = (0.5 * w) @ S
+        C = np.eye(nc * ng) - np.eye(nc * ng, k=-ng)
+        self._dlmE = DG @ C
+        return self._dlmE
+
+    def dlm_obs_matrix(self, rebuild=False):
+        """L: (nc*ng, n_node*ng) -- field node lattice -> lattice control pts.
+
+        `w_plane` lives on the FIELD's wing nodes; the lattice collocates
+        at the 3/4 chord of each station cell (D is validated there and
+        must not move). L is the linear map between the two, and it is
+        applied IDENTICALLY to the field estimator and to E, so it cancels
+        exactly in B = L.E_node - D. Only the DIFFERENCE has to be smooth
+        for the cancellation to hold, not either side on its own.
+        Linear extrapolation is used past the ends (the LE cell control
+        point 0.75*x_0 lies inboard of the first node and carries the
+        singular loading, so clamping would be worse).
+        """
+        if getattr(self, '_dlmL', None) is not None and not rebuild:
+            return self._dlmL
+        if getattr(self, '_dlmInfo', None) is None:
+            self.dlm_kernel()
+        info = self._dlmInfo
+        if info is None:
+            self._dlmL = np.zeros((0, 0))
+            return self._dlmL
+        nc, ng = info['nc'], info['ng']
+        iu = np.asarray(self.wing_ix)
+        jy = np.asarray(self.wing_jy)
+        xN = np.asarray(self.xc[iu], dtype=float)
+        yN = np.asarray(self.yc[jy], dtype=float)
+        xq = np.asarray(info['xcp'], dtype=float)
+        yq = np.asarray(info['ycp'], dtype=float)
+        nn = len(xN)
+
+        def lw(q, nodes):
+            i1 = int(np.clip(np.searchsorted(nodes, q), 1, len(nodes) - 1))
+            i0 = i1 - 1
+            t = (q - nodes[i0]) / max(nodes[i1] - nodes[i0], 1e-30)
+            return ((i0, 1.0 - t), (i1, t))
+
+        L = np.zeros((nc * ng, nn * ng))
+        for i in range(nc):
+            (a0, wa0), (a1, wa1) = lw(xq[i], xN)
+            for j in range(ng):
+                (b0, wb0), (b1, wb1) = lw(yq[j], yN)
+                r = i * ng + j
+                for aa, wax in ((a0, wa0), (a1, wa1)):
+                    for bb, wby in ((b0, wb0), (b1, wb1)):
+                        L[r, aa * ng + bb] += wax * wby
+        self._dlmL = L
+        return L
+
+    def dlm_hybrid_bias(self, rebuild=False):
+        """B = L.E_node - D: the mode-5 estimator's bias as a FIXED matrix.
+
+        B is grid- and kernel-determined (no solution enters), so the
+        hybrid row
+
+            w_field(phi) - B.mu - (dyc/dx - alpha) = 0
+
+        is LINEAR in mu and depends on phi only through w_field -- the
+        structure mode 6 lacked. In the limit where the field really is
+        the analytic doublet sheet, w_field = L.E_node.mu and the row
+        collapses to D.mu = dyc/dx - alpha exactly (mode 6, validated), so
+        the bias cancels identically and any deviation is a physical
+        difference the field carries (compressibility, thickness,
+        farfield), not estimator bias.
+        """
+        if getattr(self, '_hybB', None) is not None and not rebuild:
+            return self._hybB
+        self._hybB = self.dlm_obs_matrix() @ self.dlm_field_equivalent() \
+            - self.dlm_kernel()
+        return self._hybB
+
+    def hybrid_tangency_residual(self):
+        """Mode 7 closure: bias-free chordwise shape AND a live phi loop.
+
+            row[i,j] = wav_field(phi; x_cp_i, y_cp_j)
+                       - (B.mu)[i,j] - (dyc/dx(x_cp_i) - alpha)
+
+        The field-induced normal velocity is the PHYSICS (so Mach, shocks,
+        entropy and the BL displacement all reach the circulation through
+        w_field), while B removes the estimator's systematic chordwise
+        bias against the validated kernel. Row nc-1 stays the discrete
+        Kutta condition mu(TE) = mu(last-1), as in modes 5/6. Returns
+        (nc, ng), scaled by kutta_w in the coupled residual.
+        """
+        nc = self.n_ctrl
+        jy = np.asarray(self.wing_jy)
+        ng = len(jy)
+        if nc == 0 or ng == 0 or self.mu_b.size == 0:
+            return np.zeros((nc, ng))
+        B = self.dlm_hybrid_bias()
+        info = self._dlmInfo
+        x_at = np.asarray(info['xcp'], dtype=float) / self.chord
+        if self.profile is not None:
+            slope_c = np.asarray(self.profile['camber'](x_at), dtype=float)
+        else:
+            slope_c = np.zeros(nc)
+        g = (slope_c - self.alpha)[:, None] * np.ones((1, ng))
+        _wu, _wl, wav = self.w_plane()
+        iu = np.asarray(self.wing_ix)
+        w_node = np.asarray(wav[np.ix_(iu, jy)], dtype=float)
+        w_field = (self.dlm_obs_matrix() @ w_node.ravel()).reshape(nc, ng)
+        w = w_field - (B @ self.mu_b.ravel()).reshape(nc, ng)
+        if self.kutta_te_kutta:
+            w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
+            g[-1, :] = 0.0
+        return w - g
+
+    def hybrid_coupling_report(self, eps=1e-7):
+        """A13 diagnostic: is the mu block really phi-coupled?
+
+        Measures, on the ASSEMBLED rows (not on the operators):
+          dphi     = max |d(row)/d(phi_node)| by central difference on the
+                     four stencil nodes of one control point, and
+          dmu      = max |d(row)/d(mu)| by central difference on one
+                     diagonal mu DOF,
+        plus the analytic 1-norms of the corresponding matrix blocks. The
+        mode-6 comparison calls dlm_tangency_residual(), whose phi block is
+        structurally zero (that is the defect mode 7 removes).
+        """
+        nc, ng = self.n_ctrl, len(self.wing_jy)
+        out = {'nc': int(nc), 'ng': int(ng)}
+        if nc == 0 or ng == 0 or self.mu_b.size == 0:
+            return out
+        B = self.dlm_hybrid_bias()
+        out['B_max'] = float(np.abs(B).max())
+        out['B_l1_row_max'] = float(np.abs(B).sum(axis=1).max())
+        out['D_max'] = float(np.abs(self.dlm_kernel()).max())
+        ic, jc = nc // 2, ng // 2
+        k0 = self.k0
+        nodes = [(min(k0 + 1, self.nz - 1), 1.0), (k0, -1.0),
+                 (k0 - 1, 1.0), (max(k0 - 2, 0), -1.0)]
+        iu = int(np.asarray(self.wing_ix)[self.i_ctrl[ic]])
+        jy = int(np.asarray(self.wing_jy)[jc])
+        base = None
+        best = 0.0
+        for kk, _s in nodes:
+            old = float(self.phi[iu, jy, kk])
+            self.phi[iu, jy, kk] = old + eps
+            r1 = float(self.hybrid_tangency_residual()[ic, jc])
+            self.phi[iu, jy, kk] = old - eps
+            r2 = float(self.hybrid_tangency_residual()[ic, jc])
+            self.phi[iu, jy, kk] = old
+            if base is None:
+                base = 0.5 * (r1 + r2)
+            best = max(best, abs(r1 - r2) / (2.0 * eps))
+        out['dphi_row'] = float(best)
+        r0 = self.hybrid_tangency_residual()[ic, jc]
+        mu0 = float(self.mu_b[ic, jc])
+        self.mu_b[ic, jc] = mu0 + eps
+        r1 = float(self.hybrid_tangency_residual()[ic, jc])
+        self.mu_b[ic, jc] = mu0 - eps
+        r2 = float(self.hybrid_tangency_residual()[ic, jc])
+        self.mu_b[ic, jc] = mu0
+        out['dmu_row'] = float(abs(r1 - r2) / (2.0 * eps))
+        out['row'] = float(r0)
+        # mode-6 control: this must be identically zero
+        zp = np.zeros(4)
+        for n, (kk, _s) in enumerate(nodes):
+            old = float(self.phi[iu, jy, kk])
+            self.phi[iu, jy, kk] = old + eps
+            zp[n] = float(self.dlm_tangency_residual()[ic, jc])
+            self.phi[iu, jy, kk] = old
+        out['dphi_row_mode6'] = float(abs(zp - zp[0]).max() / eps)
+        out['ratio_phi_mu'] = out['dphi_row'] / max(out['dmu_row'], 1e-30)
+        return out
 
     def tangency_panel_residual(self):
         """Mode 5 closure: one tangency row per (panel, span station).

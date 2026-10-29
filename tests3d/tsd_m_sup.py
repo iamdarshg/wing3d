@@ -73,7 +73,7 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         s.phi[:] = 0.0
     s.k[:] = 1.0
     ng = len(s.wing_jy)
-    free_mu = (kutta in (5, 6))
+    free_mu = (kutta in (5, 6, 7))
     if kutta:
         # FREE bound-vortex circulation: seed from lifting line (starting
         # at 0 or at the old panel value lands in the wrong basin).
@@ -81,16 +81,17 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         s.kutta_mode = kutta
         s.kutta_on = True
         s.kutta_free_mu = free_mu
-        s.kutta_kernel = (kutta == 6)
-        s.kutta_bound = kutta in (1, 3, 4, 5, 6)
-        s.kutta_thick_only = kutta in (1, 4, 5, 6)
-        s.kutta_tangency = kutta in (4, 5, 6)
+        s.kutta_kernel = (kutta in (6, 7))
+        s.kutta_hybrid = (kutta == 7)
+        s.kutta_bound = kutta in (1, 3, 4, 5, 6, 7)
+        s.kutta_thick_only = kutta in (1, 4, 5, 6, 7)
+        s.kutta_tangency = kutta in (4, 5, 6, 7)
         s.kutta_morino = (kutta == 4) and (
             os.environ.get('WING3D_MORINO', '1') == '1')
-        s.kutta_te_kutta = (kutta in (5, 6)) and (
+        s.kutta_te_kutta = (kutta in (5, 6, 7)) and (
             os.environ.get('WING3D_KUTTA_TE', '1') == '1')
         s.kutta_wte = float(os.environ.get(
-            'WING3D_KUTTA_WTE', '1.0' if kutta == 6 else '6.1'))
+            'WING3D_KUTTA_WTE', '1.0' if kutta in (6, 7) else '6.1'))
         s.tang_xc = float(os.environ.get('WING3D_TANG_XC', '0.75'))
         s.tang_mode = os.environ.get('WING3D_TANG_MODE', 'gal')
         # the prescribed panel/LL bound sheet is replaced by the free one
@@ -133,6 +134,14 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         phi[0, :, :] = 0.0
         return phi
 
+    def tang_rows(st):
+        """The mu-block rows of the active closure (mode 5/6/7)."""
+        if getattr(st, 'kutta_hybrid', False):
+            return st.hybrid_tangency_residual()
+        if getattr(st, 'kutta_kernel', False):
+            return st.dlm_tangency_residual()
+        return st.tangency_panel_residual()
+
     def func(y):
         s.phi[:] = unpack(y[:nphi])
         if free_mu:
@@ -168,7 +177,13 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             # see tests3d/tsd_kutta_weight.py, tsd_a10_probe.py and
             # tsd_a11_probe.py)
             if free_mu:
-                if getattr(s, 'kutta_kernel', False):
+                if getattr(s, 'kutta_hybrid', False):
+                    # mode 7: hybrid row w_field(phi) - B.mu - g. Linear in
+                    # mu, phi-DEPENDENT (the Jacobian is no longer
+                    # block-triangular), and the estimator's chordwise bias
+                    # is removed by B.
+                    Rk = s.hybrid_tangency_residual().ravel() * s.kutta_w
+                elif getattr(s, 'kutta_kernel', False):
                     # mode 6: the rows are the ANALYTIC doublet-lattice
                     # tangency equation, and the discrete Kutta row is
                     # already row nc-1 of the same array (in mu units).
@@ -235,8 +250,9 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             if free_mu:
                 Gsec = s.mu_circulation()
                 gmid = float(Gsec[len(Gsec) // 2])
-                if getattr(s, 'kutta_kernel', False):
-                    _tr = s.dlm_tangency_residual()
+                if getattr(s, 'kutta_hybrid', False) or \
+                        getattr(s, 'kutta_kernel', False):
+                    _tr = tang_rows(s)
                     kres = float(np.abs(_tr[:-1]).max())
                     kte = float(np.abs(_tr[-1]).max())
                 else:
@@ -307,10 +323,27 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             L['kutta']['x_ctrl'] = s.x_ctrl.copy()
             L['kutta']['Gamma_mu'] = s.mu_circulation().copy()
             L['kutta']['loading'] = s.mu_loading().copy()
-            L['kutta']['tang_rows'] = (
-                s.dlm_tangency_residual().copy()
-                if getattr(s, 'kutta_kernel', False)
-                else s.tangency_panel_residual().copy())
+            if getattr(s, 'kutta_hybrid', False):
+                # A13: the row decomposition, so the bias cancellation and
+                # the phi loop can be judged from the record instead of a
+                # rerun. w_field = the field estimator, w_eq = its analytic
+                # equivalent L.E.mu, bias = B.mu (what mode 7 subtracts).
+                _wu, _wl, _wav = s.w_plane()
+                _iu = np.asarray(s.wing_ix)
+                _jy = np.asarray(s.wing_jy)
+                _nc, _ng = s.n_ctrl, len(_jy)
+                L['kutta']['w_field'] = np.asarray(
+                    _wav[np.ix_(_iu, _jy)], dtype=float).copy()
+                L['kutta']['w_eq'] = (s.dlm_field_equivalent()
+                                      @ s.mu_b.ravel()).reshape(_nc, _ng)
+                L['kutta']['bias'] = (s.dlm_hybrid_bias()
+                                      @ s.mu_b.ravel()).reshape(_nc, _ng)
+                L['kutta']['coupling'] = s.hybrid_coupling_report()
+            L['kutta']['tang_rows'] = (tang_rows(s).copy()
+                                       if (getattr(s, 'kutta_kernel', False)
+                                           or getattr(s, 'kutta_hybrid',
+                                                      False))
+                                       else s.tangency_panel_residual().copy())
     jy = np.asarray(s.wing_jy)
     j0 = jy[np.argmin(np.abs(s.yc[jy]))]
     ix = np.asarray(s.wing_ix)
