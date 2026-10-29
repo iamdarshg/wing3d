@@ -197,13 +197,13 @@ Acceptance rule: a row is **converged** only when CL at the final time differs f
 
 | geometry | M | cells | CL | CD | t_end | ladder (t: CL) | last-two delta | status |
 |---|---|---|---|---|---|---|---|---|
-| naca0012 | 0.800 | 276876 | 0.05710 | 0.01576 | 0.120 | 0.060:0.05608  0.080:0.05668  0.100:0.05658  0.120:0.05710 | 0.91% | **converged** |
+| naca0012 | 0.800 | 276876 | 0.05710 | 0.01576 | 0.120 | 0.060:0.05608  0.080:0.05668  0.100:0.05658  0.120:0.05710 | 0.91% | **converged** (marginal, right at the 1% rule) |
 | dfvlr_r4 | 0.850 | 269152 | 0.32682 | 0.03404 | 0.120 | 0.060:0.34068  0.080:0.33320  0.100:0.32890  0.120:0.32682 | 0.64% | **converged** |
-| dfvlr_r4 | 0.925 | 269152 | 0.23626 | 0.09716 | 0.010 | 0.010:0.23626 | n/a | lower bound |
-| dfvlr_r4 | 1.000 | 269152 | 0.24500 | 0.11307 | 0.030 | 0.010:0.20350  0.030:0.24500 | 16.94% | lower bound |
+| dfvlr_r4 | 0.925 | 269152 | 0.36580 | 0.09502 | 0.071 | 0.011:0.32050  0.031:0.35505  0.051:0.36218  0.071:0.36580 | 0.99% | **converged** (marginal, right at the 1% rule) |
+| dfvlr_r4 | 1.000 | 269152 | 0.21032 | 0.12947 | 0.069 | 0.009:0.25979  0.029:0.24478  0.049:0.22477  0.069:0.21032 | 6.87% | lower bound; ladder not decelerating, so no asymptote is quoted |
 
-2 of 4 rows met the <1% rule: naca0012 M0.800, dfvlr_r4 M0.850.
- Still lower bounds after the CPU budget: dfvlr_r4 M0.925 (only t=0.010, no 0.02 ladder yet), dfvlr_r4 M1.000 (delta 16.9%).
+3 of 4 rows met the <1% rule: naca0012 M0.800, dfvlr_r4 M0.850, dfvlr_r4 M0.925.
+ Still lower bounds after the CPU budget: dfvlr_r4 M1.000 (delta 6.9%).
 
 
 ## Final anchor table
@@ -212,16 +212,16 @@ Band per row is built only from terms that are *measurements of this anchor*, no
 
 - **span** +-5.2% - measured, NY=30 -> NY=60 CL change (see the span-convergence section). Caveat: that comparison was made at t=0.02 for both levels before the long integrations existed, so it is the best available estimate of the span term rather than a converged one; re-measuring it with NY=60 run to t=0.12 is the top open item.
 - **domain** +-2.1% - measured, 2.7x tip-clearance reduction moves CL 2.1% (see the domain-size section).
-- **time convergence** +-0.9% - the largest measured last-two-window CL delta among the converged rows (acceptance rule: <1% per 0.02 of simulated time). This is the term the previous version was missing: it stopped at t=0.02 with 2-3% per 0.01 still drifting and folded that drift into a guessed +-25%.
+- **time convergence** +-1.0% - the largest measured last-two-window CL delta among the converged rows (acceptance rule: <1% per 0.02 of simulated time). This is the term the previous version was missing: it stopped at t=0.02 with 2-3% per 0.01 still drifting and folded that drift into a guessed +-25%.
 
-Quadrature: sqrt(5.2^2 + 2.1^2 + 0.9^2) = **+-5.7%** for a converged row. **The solver-family term is deliberately absent.** That is a definition choice, not a hidden error: rhoCentralFoam is *the* anchor solver (second order, half the spurious inviscid drag, no relaxation tuning, fixed before these runs), every row is measured with it, and the 22% difference to rhoSimpleFoam is recorded in the tables above so the reader can widen the band if they disagree with the choice. Removing a systematic choice from an uncertainty budget is legitimate only because it is applied identically to every row and was not selected for agreement with the TSD.
+Quadrature: sqrt(5.2^2 + 2.1^2 + 1.0^2) = **+-5.7%** for a converged row. **The solver-family term is deliberately absent.** That is a definition choice, not a hidden error: rhoCentralFoam is *the* anchor solver (second order, half the spurious inviscid drag, no relaxation tuning, fixed before these runs), every row is measured with it, and the 22% difference to rhoSimpleFoam is recorded in the tables above so the reader can widen the band if they disagree with the choice. Removing a systematic choice from an uncertainty budget is legitimate only because it is applied identically to every row and was not selected for agreement with the TSD.
 
 | geometry | M | cells | CL | CD | t_end | band | status |
 |---|---|---|---|---|---|---|---|
-| naca0012 | 0.800 | 276876 | 0.0571 | 0.0158 | 0.120 | +-5.7% (0.0539-0.0603) | converged |
-| dfvlr_r4 | 0.850 | 269152 | 0.3268 | 0.0340 | 0.120 | +-5.7% (0.3083-0.3454) | converged |
-| dfvlr_r4 | 0.925 | 269152 | 0.2363 | 0.0972 | 0.010 | n/a | **lower bound** (run too short for a ladder) |
-| dfvlr_r4 | 1.000 | 269152 | 0.2450 | 0.1131 | 0.030 | +-18% (0.2013-0.2887) | **lower bound** (still moving 16.9%/0.02) |
+| naca0012 | 0.800 | 276876 | 0.0571 | 0.0158 | 0.120 | +-5.7% (0.0538-0.0604) | converged |
+| dfvlr_r4 | 0.850 | 269152 | 0.3268 | 0.0340 | 0.120 | +-5.7% (0.3082-0.3454) | converged |
+| dfvlr_r4 | 0.925 | 269152 | 0.3658 | 0.0950 | 0.071 | +-5.7% (0.3450-0.3866) | converged |
+| dfvlr_r4 | 1.000 | 269152 | 0.2103 | 0.1295 | 0.069 | +-9% (0.1917-0.2290) | **lower bound** (still moving 6.9%/0.02) |
 
 Not run at all on the anchor solver/mesh: rae2822 M0.850, rae2822 M0.925, rae2822 M1.000. The older rhoSimpleFoam/NY=15 numbers for those rows are in the tables earlier in this file and are **superseded** - they are a different discretisation and 20-25% lower, so they must not be used in a TSD comparison.
 

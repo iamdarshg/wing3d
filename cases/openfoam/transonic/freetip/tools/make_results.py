@@ -856,15 +856,47 @@ def write_md(res, spread, span, mat, dom=None, central_rows=None,
       'budget before meeting the rule are labelled **lower bound** and are '
       'excluded from the band arithmetic (they would bias it low or high '
       'unpredictably).\n')
+    # Aitken extrapolation of an equally spaced ladder (for rows that did not
+    # reach the <1% rule inside the CPU budget)
+    def aitken(lad):
+        """Only valid when the ladder differences are same-signed and clearly
+        decelerating (|d2/d1| < 0.9); otherwise the sequence is not geometric
+        and no asymptote is quoted."""
+        if len(lad) < 3:
+            return None
+        a0, a1, a2 = lad[-3][1], lad[-2][1], lad[-1][1]
+        d1, d2 = a1 - a0, a2 - a1
+        if d1 * d2 <= 0 or abs(d1) < 1e-12:
+            return None
+        if abs(d2 / d1) >= 0.9:
+            return None
+        ex = a2 + d1 * d1 / (d1 - d2)
+        # a geometric extrapolation whose correction is more than twice the
+        # last observed increment is not credible - do not quote it
+        if abs(ex - a2) > 2.0 * abs(d2):
+            return None
+        return round(ex, 5)
+
     A('| geometry | M | cells | CL | CD | t_end | ladder (t: CL) | last-two '
       'delta | status |')
     A('|---|---|---|---|---|---|---|---|---|')
     for x in anchor_set:
         lad = '  '.join(f'{t:.3f}:{c:.5f}' for t, c in x['Cl_ladder'])
-        st = ('**converged**' if x['converged']
-              else 'lower bound')
+        if x['converged']:
+            dl0 = x['Cl_plateau_delta_pct']
+            st = ('**converged** (marginal, right at the 1% rule)'
+                  if isinstance(dl0, (int, float)) and dl0 > 0.9
+                  else '**converged**')
+        else:
+            st = 'lower bound'
         dl = x['Cl_plateau_delta_pct']
         dlt = f'{dl:.2f}%' if isinstance(dl, (int, float)) else 'n/a'
+        ex = aitken(x['Cl_ladder']) if not x['converged'] else None
+        if ex is not None:
+            st = f'lower bound; Aitken extrapolation CL_inf ~ {ex:.4f}'
+        elif not x['converged']:
+            st = ('lower bound; ladder not decelerating, so no asymptote is '
+                  'quoted')
         A(f'| {x["geometry"]} | {x["mach"]:.3f} | {x["cells"]} | '
           f'{x["Cl"]:.5f} | {x["Cd"]:.5f} | {x["t_last"]:.3f} | {lad} | '
           f'{dlt} | {st} |')
