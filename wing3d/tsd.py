@@ -346,6 +346,10 @@ class TSDSolver:
         # only -- it does not depend on phi or on mu)
         self._dlmK = None
         self._dlmInfo = None
+        # A14: circulation-off REFERENCE field, wav on the wing nodes
+        # (shape (n_node, ng)). When set, the hybrid row subtracts its
+        # L-mapped downwash: B' = B + w_ref. See set_thickness_reference.
+        self._thickRefNodes = None
         if self.kutta_free_mu:
             self.init_free_mu()
         # (mode 5 mu is initialised from the flat-plate/Lifting-line
@@ -771,14 +775,27 @@ class TSDSolver:
             wu = slope_t + slope_c - self.alpha
             wl = -slope_t + slope_c - self.alpha
         if self.bl_on and self.bl_dstar_u is not None:
-            # Viscous-inviscid coupling: the displacement surface thickens
-            # the effective body, y_s = y_c +- y_t +- delta*(x). The extra
-            # normal velocity is u_e * d(delta*)/dx, which in the same
-            # slope form as above is added to the upper surface and
-            # SUBTRACTED from the lower (delta* grows outward on both).
+            # Viscous-inviscid coupling: displacement surface
+            #     y_u = y_c + y_t + delta*_u ,  y_l = y_c - y_t - delta*_l
+            # so its tangency velocity is u_e*d(delta*)/dx with the SAME
+            # sign as the thickness slope on each side (a displacement
+            # thickness thickens BOTH sides). A14 writes that in the
+            # (source/2, vortex) split this BC solves in:
+            #     half = (ddu + ddl)/2   -> source/2 : +above, -below
+            #                               -> CANCELS in wav (correct: a
+            #                                  symmetric thickening produces
+            #                                  no mean-plane downwash)
+            #     mean = (ddu - ddl)/2   -> viscous CAMBER : +above, +below
+            #                               -> the only BL term wav can see
+            # A13 read the antisymmetric entry as a bug; the sign is right
+            # (the lower surface moves -z), and the non-cancelling part is
+            # the asymmetric thickening. Both are exposed by
+            # bl_wav_terms() and measured in tests3d/tsd_a14_bl.py.
             ddu, ddl = self._bl_slope()
-            wu = wu + ddu
-            wl = wl - ddl
+            _half = 0.5 * (ddu + ddl)      # source/2  (cancels in wav)
+            _mean = 0.5 * (ddu - ddl)      # camber    (seen by wav)
+            wu = wu + (_half + _mean)
+            wl = wl + (-_half + _mean)
         R[II, JJ, k0] += wu / dzp
         R[II, JJ, k0 - 1] += -wl / dzm
         return R
@@ -955,6 +972,25 @@ class TSDSolver:
         # liveness. Default 1 = the physical term.
         sc = float(os.environ.get('WING3D_BL_SCALE', '1'))
         return ddu * sc, ddl * sc
+
+    def bl_wav_terms(self):
+        """Decompose the BL transpiration into what wav sees and what not.
+
+        Returns a dict with
+          ddu, ddl : the two surfaces' u_e*d(delta*)/dx (z-velocity units)
+          half     : (ddu+ddl)/2 -- the source/2 part, enters wu=+half,
+                     wl=-half, so it CANCELS in wav=(wu+wl)/2
+          mean     : (ddu-ddl)/2 -- the viscous camber, enters both sides
+                     with +, so it IS the BL's contribution to the tangency
+                     row, and hence the only route from viscosity to CL
+          wav_alpha: mean/alpha -- its size in units of the angle of attack
+        """
+        if self.bl_dstar_u is None:
+            return {}
+        ddu, ddl = self._bl_slope()
+        return {'ddu': ddu, 'ddl': ddl,
+                'half': 0.5 * (ddu + ddl), 'mean': 0.5 * (ddu - ddl),
+                'wav_alpha': 0.5 * (ddu - ddl) / max(abs(self.alpha), 1e-30)}
 
     def bl_update(self, relax=None, verbose=False):
         """One viscous-inviscid coupling iteration.
@@ -1631,6 +1667,38 @@ class TSDSolver:
         self._dlmE = DG @ C
         return self._dlmE
 
+    def set_thickness_reference(self, w_node):
+        """Attach the circulation-OFF reference field (A14, B' = B + w_ref).
+
+        `w_node` is `w_plane`'s mean-plane normal velocity (wav) on the
+        FIELD's own wing nodes, shape (n_node, ng), measured on a solve of
+        the SAME discrete problem with the bound/wake doublet sheets
+        disabled. In the continuum a thickness-only (source) transpiration
+        has wav = 0 at the mean plane, so this vector is a pure
+        discretisation/reference offset -- exactly the part of `w_field`
+        that the doublet sheet does not explain and that the Mach signal
+        was buried under (A13 §6). It is mu-INDEPENDENT, so folding it into
+        the bias keeps the row linear in mu.
+        """
+        self._thickRefNodes = None if w_node is None \
+            else np.asarray(w_node, dtype=float)
+
+    def dlm_thickness_reference(self):
+        """w_ref = L . (reference wav on the field nodes), or None."""
+        if getattr(self, '_thickRefNodes', None) is None:
+            return None
+        if getattr(self, '_dlmInfo', None) is None:
+            self.dlm_kernel()
+        info = self._dlmInfo
+        if info is None:
+            return None
+        nc, ng = info['nc'], info['ng']
+        w = np.asarray(self._thickRefNodes, dtype=float)
+        if w.shape != (len(self.wing_ix), ng):
+            raise ValueError('thickness reference shape %s != %s' % (
+                w.shape, (len(self.wing_ix), ng)))
+        return (self.dlm_obs_matrix() @ w.ravel()).reshape(nc, ng)
+
     def dlm_obs_matrix(self, rebuild=False):
         """L: (nc*ng, n_node*ng) -- field node lattice -> lattice control pts.
 
@@ -1732,6 +1800,13 @@ class TSDSolver:
         w_node = np.asarray(wav[np.ix_(iu, jy)], dtype=float)
         w_field = (self.dlm_obs_matrix() @ w_node.ravel()).reshape(nc, ng)
         w = w_field - (B @ self.mu_b.ravel()).reshape(nc, ng)
+        wref = self.dlm_thickness_reference()
+        if wref is not None:
+            # A14: B' = B + w_ref -- remove the circulation-off reference
+            # field's mean-plane downwash (thickness response + box/farfield
+            # + discrete-Green's-function offset), so the only phi-dependence
+            # left in the row is the CIRCULATORY part of the field.
+            w = w - wref
         if self.kutta_te_kutta:
             w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
             g[-1, :] = 0.0

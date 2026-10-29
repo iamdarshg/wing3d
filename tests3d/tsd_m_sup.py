@@ -21,6 +21,112 @@ from wing3d.tsd import flat_plate_jump
 from scipy.optimize import newton_krylov
 
 
+def thickness_reference(s, epochs=1, verbose=True, init=None):
+    """A14: circulation-OFF reference field for the mode-7 hybrid bias.
+
+    Solves the SAME discrete TSD problem with the bound and wake doublet
+    sheets disabled (mu -> 0 effect on the field), i.e. the
+    non-circulatory / thickness problem, and returns `wav = (wu+wl)/2`
+    (`TSDSolver.w_plane`) on the field's own wing nodes, shape
+    (len(wing_ix), len(wing_jy)).
+
+    Why this is a legitimate reference and not a fudge: in the continuum a
+    source (thickness) sheet has NO mean-plane normal velocity -- its
+    potential is odd in z about the sheet, so w(z->0+) = -w(z->0-) and the
+    mean is identically zero. Any non-zero `wav` a thickness-only solve
+    produces is therefore a property of the DISCRETE operator (box
+    farfield, first-order x-upwind, anisotropic dz_core), i.e. exactly the
+    discretisation offset A13 measured as a flat -0.31*alpha and could not
+    remove with a free-space bias matrix B. Nothing here is tuned: the
+    vector is measured from a solve and enters the row as a fixed,
+    mu-independent shift.
+    """
+    nx, ny, nz = s.nx, s.ny, s.nz
+    nphi = (nx - 1) * ny * nz
+    save = dict(phi=s.phi.copy(), wake_G=np.array(s.wake_G, copy=True),
+                wake_scale=s.wake_scale, circff=s._circff,
+                mu=(None if s.mu_b is None else s.mu_b.copy()))
+    flags = ['kutta_on', 'kutta_bound', 'kutta_free_mu', 'kutta_hybrid',
+             'kutta_kernel', 'kutta_tangency', 'kutta_thick_only',
+             'kutta_morino', 'bound_ramp']
+    fsave = {k: getattr(s, k, None) for k in flags}
+    s.kutta_on = False
+    s.kutta_bound = False
+    s.kutta_free_mu = False
+    s.kutta_hybrid = False
+    s.kutta_kernel = False
+    s.kutta_tangency = False
+    s.kutta_morino = False
+    s.bound_ramp = False
+    # transpiration stays THICKNESS-ONLY (the mode 1/4/5/6/7 BC), which is
+    # what the coupled solve itself imposes -- the camber/alpha lift lives
+    # entirely in the doublet sheet we are switching off
+    s.kutta_thick_only = True
+    s.wake_G = np.zeros_like(s.wake_G)
+    s.wake_scale = 1.0
+    s._circff = None
+    if init is None:
+        phi0 = s.phi.copy()
+    else:
+        phi0 = np.asarray(init, dtype=float)
+    if not np.any(phi0):
+        phi0 = np.zeros_like(s.phi)
+
+    def unpack(y):
+        phi = np.zeros((nx, ny, nz))
+        phi[1:, :, :] = y.reshape(nx - 1, ny, nz)
+        return phi
+
+    def func(y):
+        s.phi[:] = unpack(y)
+        R = s.residual()
+        R[-1, :, :] = 0
+        R[:, 0, :] = 0
+        R[:, -1, :] = 0
+        R[:, :, 0] = 0
+        R[:, :, -1] = 0
+        R[0, :, :] = 0
+        return R[1:].ravel()
+
+    y0 = phi0[1:].ravel().copy()
+    resn = float('nan')
+    for ep in range(max(1, epochs)):
+        s._frozen = s._sup_mask()
+        s._frozenA = s._face_coeff()
+        dx = s.dx
+        phix = (s.phi[1:, :, :] - s.phi[:-1, :, :]) / dx[:, None, None]
+        s._frozenRho = s._face_rho(phix)
+        s._frozenRhon = s._nodal_rho()
+        y0 = newton_krylov(func, y0, iter=80, verbose=False,
+                           f_tol=1e-4, f_rtol=1e-7)
+        resn = float(np.abs(func(y0)).max())
+    s.phi[:] = unpack(y0)
+    _wu, _wl, _wav = s.w_plane()
+    iu = np.asarray(s.wing_ix)
+    jy = np.asarray(s.wing_jy)
+    w_node = np.asarray(_wav[np.ix_(iu, jy)], dtype=float).copy()
+    nsup = int(s._sup_mask().sum())
+    if verbose:
+        al = max(abs(s.alpha), 1e-30)
+        print('  thick-ref: M=%.3f ep=%d |F|max=%.1e nsup=%d  '
+              'wav/alpha chord x %s = %s' % (
+                  s.Minf, epochs, resn, nsup,
+                  np.round(s.xc[iu] / s.chord, 3)[::3],
+                  np.round(w_node[::3, len(jy) // 2] / al, 3)), flush=True)
+    # restore the coupled-solve state
+    s.phi[:] = save['phi']
+    s.wake_G = save['wake_G']
+    s.wake_scale = save['wake_scale']
+    s._circff = save['circff']
+    if save['mu'] is not None:
+        s.mu_b = save['mu']
+    for k, v in fsave.items():
+        setattr(s, k, v)
+    s._frozen = s._frozenA = s._frozenRho = None
+    s._frozenRhon = None
+    return w_node
+
+
 def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
             base=None, callback=None, alpha_deg=None):
     kutta = int(os.environ.get('WING3D_KUTTA', '0') or 0)
@@ -211,6 +317,17 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
         return R[1:].ravel()
 
     s.kutta_hist = []
+    # A14: B' = B + w_ref. When WING3D_KUTTA_THICK=1, measure the
+    # circulation-off reference field FIRST (one extra phi-only solve, the
+    # same discrete operator and BCs with the doublet sheets disabled) and
+    # attach its wing-node wav so every hybrid row subtracts it.
+    s._thickRefNodes = None
+    if getattr(s, 'kutta_hybrid', False) and os.environ.get(
+            'WING3D_KUTTA_THICK', '0') == '1':
+        s._thickRefNodes = thickness_reference(
+            s, epochs=int(os.environ.get('WING3D_THICK_EP', '1')),
+            init=(s.phi if os.environ.get('WING3D_THICK_INIT',
+                                          'lift') == 'lift' else None))
     for ep in range(epochs):
         s._frozen = s._sup_mask()
         s._frozenA = s._face_coeff()
@@ -312,12 +429,36 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
     if getattr(s, 'bl_on', False):
         L['bl'] = {'hist': s.bl_hist, 'sep': s.bl_sep,
                    'dstar_u': s.bl_dstar_u, 'dstar_l': s.bl_dstar_l}
+        _bt = s.bl_wav_terms()
+        if _bt:
+            # A14: the BL transpiration decomposed into the part wav
+            # cancels (source/2, both sides thicken) and the part it sees
+            # (viscous camber (ddu-ddl)/2), in alpha units at mid span.
+            _jm = len(s.wing_jy) // 2
+            L['bl']['wav_terms'] = {
+                'ddu_mid': _bt['ddu'][:, _jm].tolist(),
+                'ddl_mid': _bt['ddl'][:, _jm].tolist(),
+                'half_mid': _bt['half'][:, _jm].tolist(),
+                'mean_mid': _bt['mean'][:, _jm].tolist(),
+                'wav_alpha_mid': _bt['wav_alpha'][:, _jm].tolist(),
+                'wav_alpha_absmax': float(np.abs(_bt['wav_alpha']).max()),
+                'half_absmax': float(np.abs(_bt['half']).max())}
     if kutta:
         if free_mu:
             s.gamma_b = s.mu_circulation()
         L['kutta'] = {'hist': s.kutta_hist, 'Gamma': s.gamma_b.copy(),
                       'w': s.kutta_w,
                       'y': s.yc[np.asarray(s.wing_jy)].copy()}
+        # A14: the grid quantities the discretisation-vs-physics question
+        # turns on -- the two z the field estimator reads, and the core dz
+        # either side of the wing plane.
+        _zu, _zl = s._stencil_heights()
+        L['kutta']['grid'] = {
+            'nx': int(s.nx), 'ny': int(s.ny), 'nz': int(s.nz),
+            'stencil_z_up': float(_zu), 'stencil_z_lo': float(_zl),
+            'dz_below_k0': float(s.dz[s.k0 - 1]),
+            'dz_above_k0': float(s.dz[min(s.k0, len(s.dz) - 1)]),
+            'n_chord': int(len(s.wing_ix)), 'n_span': int(len(s.wing_jy))}
         if free_mu:
             L['kutta']['mu'] = s.mu_b.copy()
             L['kutta']['x_ctrl'] = s.x_ctrl.copy()
@@ -338,6 +479,11 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
                                       @ s.mu_b.ravel()).reshape(_nc, _ng)
                 L['kutta']['bias'] = (s.dlm_hybrid_bias()
                                       @ s.mu_b.ravel()).reshape(_nc, _ng)
+                _wref = s.dlm_thickness_reference()
+                if _wref is not None:
+                    L['kutta']['w_thick'] = _wref.copy()
+                    L['kutta']['w_thick_node'] = (
+                        np.asarray(s._thickRefNodes, dtype=float).copy())
                 L['kutta']['coupling'] = s.hybrid_coupling_report()
             L['kutta']['tang_rows'] = (tang_rows(s).copy()
                                        if (getattr(s, 'kutta_kernel', False)
