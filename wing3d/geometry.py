@@ -214,6 +214,99 @@ def build_wing(code='0012', span=6.0, chord=1.0, taper=1.0, sweep_deg=0.0,
     return mesh
 
 
+def nonplanar_planform(span=1.6, n_st=25, chord_fn=None, xle_fn=None,
+                       z_fn=None, twist_fn=None, slope_t_fn=None,
+                       slope_c_fn=None, note=''):
+    """Span-station description of a general (possibly non-planar) wing.
+
+    This is the geometry INPUT of the TSD Cartesian model: the solver
+    rasterises it onto its own (x, y) node grid (TSDSolver.set_planform),
+    so taper / sweep / twist / planform shape / per-span section identity
+    all enter the field through the same arrays
+
+        xle(y), chord(y), z(y), twist(y)
+
+    and section identity enters as two callables
+        slope_t(x_rel, y) -> d(half-thickness)/dx   (local chord units)
+        slope_c(x_rel, y) -> d(camber)/dx
+    so a thick centrebody and a thin outer panel are one planform.
+
+    Returns dict(y, xle, chord, z, twist_deg, slope_t, slope_c, span, note).
+    """
+    y = np.linspace(-0.5 * span, 0.5 * span, n_st)
+    eta = np.abs(y) / (0.5 * span)
+    xle = (np.zeros_like(y) if xle_fn is None
+           else np.asarray(xle_fn(eta), float))
+    ch = (np.ones_like(y) if chord_fn is None
+          else np.asarray(chord_fn(eta), float))
+    zz = np.zeros_like(y) if z_fn is None else np.asarray(z_fn(eta), float)
+    tw = (np.zeros_like(y) if twist_fn is None
+          else np.asarray(twist_fn(eta), float))
+    return {'y': y, 'xle': xle, 'chord': ch, 'z': zz, 'twist_deg': tw,
+            'slope_t': slope_t_fn, 'slope_c': slope_c_fn, 'span': span,
+            'eta': eta, 'note': note}
+
+
+def thickness_slope_np(x, t=0.12):
+    """NACA-4 half-thickness slope, vectorised over a thickness array."""
+    x = np.clip(np.asarray(x, dtype=float), 0.0, 1.0)
+    t = np.asarray(t, dtype=float)
+    return 5 * t * (0.2969 / (2 * np.sqrt(np.maximum(x, 1e-9))) - 0.1260
+                    - 2 * 0.3516 * x + 3 * 0.2843 * x ** 2
+                    - 4 * 0.1036 * x ** 3)
+
+
+def flying_wing_planform(span=3.0, chord_root=1.0, taper=0.18, eta_crank=0.22,
+                         sweep_le_deg=32.0, sweep_le_in_deg=8.0,
+                         dihedral_deg=0.0, washout_deg=3.0, n_st=41,
+                         t_centre=0.16, t_outer=0.10):
+    """A REPRESENTATIVE flying-wing planform (B-2-like), NOT a B-2.
+
+    No accurate public B-2 geometry exists, so this is a parametric
+    blended flying wing built to exercise every capability the planar
+    model lacked: a swept leading edge with an inboard crank, a blended
+    centrebody (constant chord inboard), strong taper to a small tip
+    chord, washout, optional dihedral, and a THICKER centre section than
+    the outer panels (section identity varying with span).
+
+    Numbers chosen: AR ~ 3 (a low-AR blended body), LE sweep 32 deg
+    outboard / 8 deg through the centrebody, tip chord 18% of root,
+    centre section 16% thick vs 10% outboard. ALL REPRESENTATIVE.
+    """
+    def chord_fn(eta):
+        e = np.clip((eta - eta_crank) / max(1.0 - eta_crank, 1e-9), 0, 1)
+        return chord_root * (1.0 - (1.0 - taper) * e)
+
+    def xle_fn(eta):
+        yv = eta * 0.5 * span
+        yc = eta_crank * 0.5 * span
+        return np.where(
+            yv <= yc, np.tan(np.radians(sweep_le_in_deg)) * yv,
+            np.tan(np.radians(sweep_le_in_deg)) * yc
+            + np.tan(np.radians(sweep_le_deg)) * (yv - yc))
+
+    def z_fn(eta):
+        return np.tan(np.radians(dihedral_deg)) * eta * 0.5 * span
+
+    def twist_fn(eta):
+        return -washout_deg * eta
+
+    def slope_t_fn(xrel, yy):
+        eta = np.abs(np.asarray(yy, float)) / (0.5 * span)
+        e = np.clip((eta - eta_crank) / max(1.0 - eta_crank, 1e-9), 0, 1)
+        t = t_centre + (t_outer - t_centre) * e
+        return thickness_slope_np(xrel, t)
+
+    def slope_c_fn(xrel, yy):
+        return np.zeros_like(np.asarray(xrel, float))
+
+    return nonplanar_planform(
+        span=span, n_st=n_st, chord_fn=chord_fn, xle_fn=xle_fn,
+        z_fn=z_fn, twist_fn=twist_fn, slope_t_fn=slope_t_fn,
+        slope_c_fn=slope_c_fn,
+        note='representative flying wing (not a B-2)')
+
+
 def read_stl(path):
     """Read ASCII or binary STL -> Mesh (triangles, welded)."""
     with open(path, 'rb') as fh:

@@ -350,6 +350,20 @@ class TSDSolver:
         # (shape (n_node, ng)). When set, the hybrid row subtracts its
         # L-mapped downwash: B' = B + w_ref. See set_thickness_reference.
         self._thickRefNodes = None
+        # ---- NON-PLANAR BODY SURFACE z_s(x, y) -------------------------
+        # The default model is a near-plane: ONE Cartesian z-plane (node
+        # k0, sheet on face k0-1) carries the jump + transpiration for the
+        # whole span, and the chordwise mask is a single index set shared
+        # by every span station. `zsurf` / `wing_mask` / `planform` replace
+        # that with a per-(i,j) surface height, a per-(i,j) membership mask
+        # and per-span section parameters (chord, LE, twist, section).
+        # All of them default to None -> the stock planar path runs and is
+        # bit-identical (see `_wing_geom` and tests3d/a16_nonplanar.py).
+        self.zsurf = None      # (nx, ny) float: surface height z_s(x_i,y_j)
+        self.wing_mask = None  # (nx, ny) bool: cells that carry a body
+        self.planform = None   # dict from geometry.*_planform()
+        self._geom = None      # cache: snapped per-(i,j) plane geometry
+        self.nonplanar = False
         if self.kutta_free_mu:
             self.init_free_mu()
         # (mode 5 mu is initialised from the flat-plate/Lifting-line
@@ -441,6 +455,415 @@ class TSDSolver:
         _xc = 0.5 * (self.x[:-1] + self.x[1:])
         self.x_ctrl = _xc[np.asarray(self.wing_ix)[idx]] / self.chord
         self.mu_b = np.zeros((self.n_ctrl, len(self.wing_jy)))
+
+    # ==================================================================
+    # NON-PLANAR SURFACE z_s(x, y)   (WING3D_NONPLANAR / set_surface)
+    # ==================================================================
+    def set_surface(self, zsurf=0.0, mask=None, planform=None, rebuild=True):
+        """Install a general body surface z = z_s(x, y) on the wing mask.
+
+        zsurf : (nx, ny) array (node-centred), or a scalar (uniform).
+        mask  : (nx, ny) bool of cells carrying a body; None = the stock
+                rectangle wing_ix x wing_jy.
+        planform : optional dict with per-span section data, see
+                `set_planform` (chord / LE / twist / section identity).
+
+        What the generalisation does NOT change: the unknowns (`mu_b`,
+        `gamma_b`), the closures, and the grid. What it changes:
+
+          * the sheet (potential jump) and the transpiration are applied at
+            the z-FACE that brackets z_s(x_i, y_j) for THAT (i,j), instead
+            of at one global face k0-1;
+          * the surface quantities (Cp, Cp jump, w_plane, the Kutta rows)
+            are extrapolated to z_s(x_i,y_j) instead of to z = 0;
+          * the transpiration carries the tangential term of the local
+            normal projection, h_y * v (see `_apply_wing_bc`).
+
+        Cartesian snap: z_s is represented by the two adjacent z-node
+        stencils with weights (1-theta, theta), theta = the position of z_s
+        inside its cell. theta is continuous in z_s, so CL is continuous in
+        the dihedral angle; theta = 1 exactly at a node, which is what makes
+        the stock z_s = 0 case bit-identical. The residual resolution limit
+        is dz near the wing (~2-4% chord on these grids): a height change
+        smaller than dz/2 across the semi-span cannot be represented at all.
+        """
+        import numpy as _np
+        if zsurf is None:
+            return self.clear_surface()
+        self.nonplanar = True
+        z = _np.asarray(zsurf, dtype=float)
+        if z.ndim == 0:
+            z = _np.full((self.nx, self.ny), float(z))
+        if z.shape != (self.nx, self.ny):
+            raise ValueError('zsurf shape %s != %s' % (z.shape,
+                                                       (self.nx, self.ny)))
+        self.zsurf = z
+        if mask is None:
+            self.wing_mask = None
+        else:
+            m = _np.asarray(mask, dtype=bool)
+            if m.shape == (len(self.wing_ix), len(self.wing_jy)):
+                full = _np.zeros((self.nx, self.ny), dtype=bool)
+                full[_np.ix_(self.wing_ix, self.wing_jy)] = m
+                m = full
+            if m.shape != (self.nx, self.ny):
+                raise ValueError('mask shape %s != %s' % (m.shape,
+                                                          (self.nx, self.ny)))
+            self.wing_mask = m
+        if planform is not None:
+            self.planform = planform
+        if rebuild:
+            self._geom = None
+            self._dlmK = self._dlmE = self._dlmL = self._hybB = None
+            self._dlmInfo = None
+        return self
+
+    def clear_surface(self):
+        self.zsurf = None
+        self.wing_mask = None
+        self.planform = None
+        self.nonplanar = False
+        self._geom = None
+        self._dlmK = self._dlmE = self._dlmL = self._hybB = None
+        self._dlmInfo = None
+        return self
+
+    def set_planform(self, plan):
+        """Rasterise a planform dict (geometry.nonplanar_planform) onto the
+        Cartesian (x,y) grid and install it.
+
+        `plan` keys, indexed by span station y:
+            y, xle, chord, z, twist_deg, and optionally callables
+            slope_t(x_rel, y), slope_c(x_rel, y) for section identity.
+
+        The body membership is per (i,j) CELL: cell (i,j) carries a body
+        iff its x-centre lies in [xle(y_j), xle(y_j)+chord(y_j)] for its
+        own span station. That single rule is what makes taper, sweep, a
+        crank and a centrebody representable -- the stock model applies one
+        chordwise index set to every span station, which cannot express any
+        of them.
+        """
+        y = np.asarray(plan['y'], dtype=float)
+        xle = np.asarray(plan['xle'], dtype=float)
+        ch = np.asarray(plan['chord'], dtype=float)
+        zz = np.asarray(plan['z'], dtype=float)
+        tw = np.radians(np.asarray(plan.get('twist_deg',
+                                            np.zeros_like(y)), dtype=float))
+        xc, yc = self.xc, self.yc          # CELL centres, stock convention
+        inn_span = np.abs(yc) <= 0.5 * self.span
+        xle_j = np.interp(yc, y, xle)
+        ch_j = np.interp(yc, y, ch)
+        z_cell = np.interp(yc, y, zz)
+        tw_j = np.interp(yc, y, tw)
+        jset = np.where(inn_span & (ch_j > 0))[0]
+        if jset.size == 0:
+            raise ValueError('planform has no span stations inside the box')
+        lo = float(np.min(xle_j[jset]))
+        hi = float(np.max(xle_j[jset] + ch_j[jset]))
+        iset = np.where((xc >= lo) & (xc <= hi))[0]
+        if iset.size == 0:
+            raise ValueError('planform lies outside the grid in x')
+        self.wing_ix = iset
+        self.wing_jy = jset
+        inn = ((xc[iset][:, None] >= xle_j[jset][None, :])
+               & (xc[iset][:, None] <= (xle_j[jset] + ch_j[jset])[None, :]))
+        z_node = np.interp(self.y, y, zz)
+        zsurf = np.repeat(z_node[None, :], self.nx, axis=0)
+        meta = {'y': y, 'xle_j': xle_j, 'c_j': ch_j, 'z_j': z_cell,
+                'tw_j': tw_j, 'chord': ch, 'xle': xle, 'z': zz}
+        for key in ('slope_t', 'slope_c'):
+            if key in plan:
+                meta[key] = plan[key]
+        self.set_surface(zsurf, mask=inn, planform=meta)
+        if self.kutta_free_mu:
+            self.init_free_mu()
+        return self
+
+    def _expand(self, inn):
+        """(ni,ng) mask -> full (nx,ny) bool."""
+        import numpy as _np
+        m = _np.zeros((self.nx, self.ny), dtype=bool)
+        m[_np.ix_(self.wing_ix, self.wing_jy)] = inn
+        return m
+
+    def _wing_geom(self, rebuild=False):
+        """Per-(i,j) snapped-plane geometry (cached).
+
+        Returns dict of (ni, ng) arrays, ii/jj the node index grids:
+          ks    node index whose stencil represents the surface
+          f     = ks-1: the z-FACE the sheet sits on
+          th    in-cell fraction; the stencil of face f is weighted th and
+                that of face f-1 is weighted (1-th). th == 1 exactly when
+                z_s is a z-node -> the stock scheme, bit for bit.
+          zs    surface height, zs_x/zs_y its slopes
+          mask  active cells
+          w_st  (2, ni, ng) face indices / weights of the two stencils
+        """
+        import numpy as _np
+        if self._geom is not None and not rebuild:
+            return self._geom
+        iu = _np.asarray(self.wing_ix)
+        jy = _np.asarray(self.wing_jy)
+        g = {'ii': iu, 'jj': jy}
+        if len(iu) == 0 or len(jy) == 0:
+            self._geom = g
+            return g
+        II, JJ = _np.meshgrid(iu, jy, indexing='ij')
+        g['II'], g['JJ'] = II, JJ
+        if self.zsurf is not None:
+            zs = _np.asarray(self.zsurf[_np.ix_(iu, jy)], dtype=float)
+        else:
+            zs = _np.zeros((len(iu), len(jy)))
+        if self.wing_mask is not None:
+            mask = _np.asarray(self.wing_mask[_np.ix_(iu, jy)], dtype=bool)
+        else:
+            mask = _np.ones(zs.shape, dtype=bool)
+        z = self.z
+        nz = self.nz
+        # face index: z[f] <= zs < z[f+1] ('left' puts zs == z[f] in the
+        # cell ABOVE f, i.e. f-1 -- the stock scheme at zs = 0)
+        f = _np.searchsorted(z, zs, side='left') - 1
+        f = _np.clip(f, 0, nz - 2)
+        dzf = _np.maximum(z[f + 1] - z[f], 1e-12)
+        th = _np.clip((zs - z[f]) / dzf, 0.0, 1.0)
+        # Two different anchors, and they are NOT the same thing:
+        #   fcut/th : the z-FACE the sheet/source is applied on. A face can
+        #             only bracket a height one-sidedly, so th is the
+        #             position of z_s inside the cell [z[f], z[f+1]] and the
+        #             two adjacent face stencils are blended (1-th, th);
+        #             th = 1 exactly at a node == the stock scheme, which is
+        #             what keeps z_s = 0 bit-identical.
+        #   ks      : the node the SURFACE QUANTITIES (Cp, w_plane, Kutta
+        #             rows) are read around. That one must be the NEAREST
+        #             node, not the node above: the stock loads() reads
+        #             planes k0-1, k0-2 below the cut, i.e. one plane either
+        #             side of the node, and anchoring it at the node ABOVE
+        #             makes an epsilon-sized z_s switch the plane pair
+        #             (measured: z_s = 1e-4c cost 77% of CL).
+        ks = _np.abs(z[None, None, :] - zs[:, :, None]).argmin(axis=-1)
+        g.update({'zs': zs, 'mask': mask, 'f': f, 'fcut': f, 'th': th,
+                  'ks': ks})
+        if self.zsurf is not None and (np.abs(zs).max() > 0):
+            gz = _np.gradient(zs, self.xc[iu], self.yc[jy], axis=(0, 1))
+            g['zs_x'], g['zs_y'] = gz[0], gz[1]
+        else:
+            g['zs_x'] = _np.zeros(zs.shape)
+            g['zs_y'] = _np.zeros(zs.shape)
+        # per-(i,j) section geometry (defaults: the stock single section)
+        g['xc_rel'] = _np.repeat(
+            (_np.asarray(self.xc[iu]) / self.chord)[:, None], len(jy), axis=1)
+        g['alpha'] = _np.full(zs.shape, self.alpha)
+        g['slope_t'] = None
+        g['slope_c'] = None
+        pl = self.planform
+        if pl is not None and 'c_j' in pl:
+            cj = _np.asarray(pl['c_j'])[jy]
+            xlj = _np.asarray(pl['xle_j'])[jy]
+            twj = _np.asarray(pl['tw_j'])[jy]
+            cc = _np.where(cj > 0, cj, 1.0)
+            g['xc_rel'] = ((_np.asarray(self.xc[iu])[:, None] - xlj[None, :])
+                           / cc[None, :])
+            g['alpha'] = self.alpha + twj[None, :] * _np.ones(
+                (len(iu), 1))
+            g['alpha'] = _np.broadcast_to(g['alpha'], zs.shape).copy()
+            if 'slope_t' in pl:
+                g['slope_t'] = pl['slope_t']      # array OR callable
+            if 'slope_c' in pl:
+                g['slope_c'] = pl['slope_c']
+        self._geom = g
+        return g
+
+    def _section_slopes(self):
+        """Per-(i,j) thickness and camber slopes (local chord frame)."""
+        import numpy as _np
+        g = self._wing_geom()
+        zs = g['zs']
+        xr = g['xc_rel']
+        if callable(g['slope_t']):
+            Y = _np.broadcast_to(_np.asarray(self.yc[g['jj']])[None, :],
+                                 xr.shape)
+            st = _np.asarray(g['slope_t'](xr, Y), dtype=float)
+            sc = (_np.asarray(g['slope_c'](xr, Y), dtype=float)
+                  if callable(g['slope_c']) else _np.zeros(xr.shape))
+        elif g['slope_t'] is not None:
+            st = _np.asarray(g['slope_t'], dtype=float)
+            sc = _np.asarray(g['slope_c'], dtype=float)
+        elif self.profile is not None:
+            st = _np.broadcast_to(
+                _np.asarray(self.profile['slope'](xr[:, 0]))[:, None],
+                zs.shape)
+            sc = _np.broadcast_to(
+                _np.asarray(self.profile['camber'](xr[:, 0]))[:, None],
+                zs.shape)
+        else:
+            st = _np.broadcast_to(
+                thickness_slope(xr[:, 0], self.thick)[:, None], zs.shape)
+            sc = _np.zeros(zs.shape)
+        return st, sc
+
+    def _bc_terms(self):
+        """Per-(i,j) transpiration velocities wu, wl (upper/lower)."""
+        import numpy as _np
+        g = self._wing_geom()
+        st, sc = self._section_slopes()
+        # LOCAL NORMAL PROJECTION. Tangency on z = h(x,y) is
+        #     w = h_x*(1 + u/U) + h_y*v - alpha_local      (V_z = sin a ~ a)
+        # The u/U factor is dropped exactly as the stock flat BC drops it
+        # (it is O(slope*alpha), second order). The h_y*v term is KEPT: for
+        # a dihedral/height-varying surface it is the ONLY route by which
+        # the tilt of the surface reaches the lift (it is the vertical-
+        # velocity form of the normal projection -- the same statement as
+        # V.n = 0, since n ~ (h_x, h_y, -1)). It is O(Gamma^2) in the
+        # dihedral angle, which is why dihedral moves CL only at second
+        # order (cos Gamma - 1 = -Gamma^2/2).
+        wu = st + sc + g['zs_x'] - g['alpha']
+        wl = -st + sc + g['zs_x'] - g['alpha']
+        # MEASURED AND REJECTED (kept behind WING3D_NP_TANGENT=1):
+        # the tangential h_y*v term of the normal projection is formally
+        # required, but v is a first-difference estimator across the branch
+        # cut (the same estimator A10/A11 measured to be jump-contaminated)
+        # and its magnitude on this grid is |h_y*v| = 0.10-0.23 alpha for a
+        # 5 deg dihedral -- one to two orders of magnitude LARGER than the
+        # physical effect it should carry (VLM: dCL = -0.31% at 5 deg,
+        # i.e. 0.003 alpha). With it on, mode 7 walks to a negative
+        # circulation (measured CL_circ -0.13 vs +0.065 flat). It is
+        # therefore OFF by default: a term whose discretisation noise is
+        # 30x its physical content is not a model, it is a random number
+        # generator with a sign convention.
+        if (self.zsurf is not None) and bool((g['zs_y'] != 0).any()) \
+                and os.environ.get('WING3D_NP_TANGENT', '0') == '1':
+            vu, vl = self._v_surface()
+            wu = wu + g['zs_y'] * vu
+            wl = wl + g['zs_y'] * vl
+        return wu, wl
+
+    def _v_surface(self):
+        """Spanwise disturbance velocity v = dphi/dy extrapolated to z_s.
+
+        Same construction as `w_plane` (a first-order difference across the
+        cut) but in y: v_s = dphi/dy at the two stencil planes each side,
+        linearly extrapolated in z to the surface height.
+        """
+        import numpy as _np
+        g = self._wing_geom()
+        ks = g['ks']
+        zs = g['zs']
+        ii, jj = g['ii'], g['jj']
+        nz = self.nz
+        # v on every z-plane (central in y; one-sided rows stay 0)
+        VY = np.zeros((self.nx, self.ny, nz))
+        if self.ny > 2:
+            VY[:, 1:-1, :] = (self.phi[:, 2:, :] - self.phi[:, :-2, :]) / (
+                self.y[2:] - self.y[:-2])[None, :, None]
+
+        def side(k1, k2):
+            k1 = np.clip(k1, 0, nz - 1)
+            k2 = np.clip(k2, 0, nz - 1)
+            z1, z2 = self.z[k1], self.z[k2]
+            den = np.where(np.abs(z2 - z1) > 1e-12, z2 - z1, 1e-12)
+            w = (z2 - zs) / den
+            a = VY[np.ix_(ii, jj) + (k1,)]
+            b = VY[np.ix_(ii, jj) + (k2,)]
+            return w * a + (1.0 - w) * b
+
+        ku1 = _np.clip(ks + 1, 0, nz - 1)
+        ku2 = _np.clip(ks + 2, 0, nz - 1)
+        kl1 = _np.clip(ks - 1, 0, nz - 1)
+        kl2 = _np.clip(ks - 2, 0, nz - 1)
+        return side(ku1, ku2), side(kl1, kl2)
+
+    def _wake_z(self):
+        """Height of the trailing-edge line z_TE(y) per span station.
+
+        The wake sheet must leave the wing AT THE TE HEIGHT of each span
+        station. Leaving it on the planar face k0-1 while the wing sheet
+        steps up with the dihedral breaks Helmholtz (measured: CL lost
+        90% at 2 deg dihedral before this was fixed -- the trailed jump no
+        longer equalled the bound TE jump).
+        """
+        g = self._wing_geom()
+        zs = g['zs']
+        m = g['mask']
+        ng = zs.shape[1]
+        zte = np.zeros(ng)
+        for q in range(ng):
+            rows = np.nonzero(m[:, q])[0]
+            zte[q] = zs[rows[-1], q] if rows.size else 0.0
+        return zte
+
+    def _wake_faces(self):
+        """(face, weight) pairs of the wake sheet per (wake_ix, wake_jy).
+
+        Same in-cell blend as the wing sheet: the trailed jump is applied
+        on the two faces bracketing z_TE(y), weighted (1-theta, theta).
+        """
+        g = self._wing_geom()
+        jw = np.asarray(self.wake_jy)
+        jy = np.asarray(g['jj'])
+        zte = self._wake_z()
+        zj = np.interp(np.asarray(self.yc[jw], float),
+                       np.asarray(self.yc[jy], float), zte)
+        ni = len(self.wake_ix)
+        Z = np.repeat(zj[None, :], ni, axis=0)
+        f = np.clip(np.searchsorted(self.z, Z, side='left') - 1, 0,
+                    self.nz - 2)
+        dzf = np.maximum(self.z[f + 1] - self.z[f], 1e-12)
+        th = np.clip((Z - self.z[f]) / dzf, 0.0, 1.0)
+        return f, f - 1, th, 1.0 - th
+
+    def _stencil_weights(self):
+        """(face index, weight) pairs of the two stencils per cell.
+
+        Returns g1, g2 (ni,ng) int face indices and w1, w2 their weights,
+        with the mask folded in (inactive cells get weight 0 everywhere).
+        """
+        import numpy as _np
+        g = self._wing_geom()
+        f = g['f']
+        th = g['th']
+        act = g['mask'] & (f >= 1) & (f <= self.nz - 2)
+        w1 = _np.where(act, th, 0.0)
+        w2 = _np.where(act, 1.0 - th, 0.0)
+        return f, f - 1, w1, w2
+
+    def _gradx_planes(self):
+        """dphi/dx on every z-plane, shape (nx, ny, nz) (central in x)."""
+        import numpy as _np
+        G = _np.zeros((self.nx, self.ny, self.nz))
+        G[1:-1] = (self.phi[2:, :, :] - self.phi[:-2, :, :]) / (
+            self.x[2:] - self.x[:-2])[:, None, None]
+        return G
+
+    def _surf_cp_ij(self, G=None, cp_from_g=None):
+        """Cp on the upper/lower surface at z_s, per (i,j) cell.
+
+        Linear extrapolation in z to the LOCAL surface height, from the two
+        clean planes each side of the snapped sheet (ks+1, ks+2 above and
+        ks-1, ks-2 below), exactly as `loads` does for the plane z = 0.
+        """
+        import numpy as _np
+        g = self._wing_geom()
+        if G is None:
+            G = self._gradx_planes()
+        ii, jj = g['ii'], g['jj']
+        ks, zs = g['ks'], g['zs']
+        nz = self.nz
+
+        def side(k1, k2, sign):
+            k1 = _np.clip(k1, 0, nz - 1)
+            k2 = _np.clip(k2, 0, nz - 1)
+            z1, z2 = self.z[k1], self.z[k2]
+            den = _np.where(_np.abs(z2 - z1) > 1e-12, z2 - z1, 1e-12)
+            w = (z2 - zs) / den
+            a = G[_np.ix_(ii, jj) + (k1,)]
+            b = G[_np.ix_(ii, jj) + (k2,)]
+            return w * a + (1.0 - w) * b
+
+        gu = side(ks + 1, ks + 2, 1)
+        gl = side(ks - 1, ks - 2, -1)
+        if cp_from_g is None:
+            return -2.0 * gu, -2.0 * gl
+        return cp_from_g(gu), cp_from_g(gl)
 
     def _coeff_A(self, phix):
         gm = self.gamma
@@ -684,8 +1107,28 @@ class TSDSolver:
                 _g = (1 - t) * _g + t * self.wake_scale * gff * (
                     self.dy[WJ] if os.environ.get('WING3D_JUMP_DYW',
                                                   '1') == '1' else 1.0)
-            phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * _g
-                                       / self.dz[k0 - 1])
+            if not self.nonplanar:
+                phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * _g
+                                           / self.dz[k0 - 1])
+            elif os.environ.get('WING3D_NP_WAKE', '1') != '1':
+                phiz_f[WI, WJ, k0 - 1] -= (self.wake_sign * _g
+                                           / self.dz[k0 - 1])
+            else:
+                # Trail the wake at the TE height of each span station.
+                # Leaving it on the planar face k0-1 while the wing sheet
+                # steps up with the dihedral breaks Helmholtz and the
+                # bound circulation collapses (measured, see _wake_z).
+                f1, f2, wf1, wf2 = self._wake_faces()
+                _wg = self.wake_sign * _g
+                for gg, wgt in ((f1, wf1), (f2, wf2)):
+                    act = wgt != 0.0
+                    if not act.any():
+                        continue
+                    for gf in np.unique(gg[act]):
+                        m = act & (gg == gf)
+                        kk = int(gf)
+                        phiz_f[WI[m], WJ[m], kk] -= (wgt[m] * _wg[m]
+                                                     / self.dz[kk])
         if (self.bound_ramp or self.kutta_bound) and len(self.wing_ix) \
                 and len(self.wing_jy) and k0 >= 1:
             BI, BJ = np.meshgrid(self.wing_ix, self.wing_jy, indexing='ij')
@@ -713,9 +1156,27 @@ class TSDSolver:
             _dyw = self.dy[BJ] if os.environ.get('WING3D_JUMP_DYW',
                                                  '0') == '1' else 1.0
             _js = float(os.environ.get('WING3D_JUMP_SCALE', '1'))
-            phiz_f[BI, BJ, k0 - 1] -= (self.wake_sign * self.wake_scale
-                                       * self.k[BK] * jump * _dyw * _js
-                                       / self.dz[k0 - 1])
+            _src = (self.wake_sign * self.wake_scale * self.k[BK] * jump
+                    * _dyw * _js)
+            if not self.nonplanar:
+                phiz_f[BI, BJ, k0 - 1] -= (_src / self.dz[k0 - 1])
+            elif os.environ.get('WING3D_NP_CUT', '1') != '1':
+                # ABLATION: keep the cut (potential jump) on the planar
+                # face k0-1 even when the body surface is not planar. Only
+                # the transpiration source and the surface evaluation move.
+                phiz_f[BI, BJ, k0 - 1] -= (_src / self.dz[k0 - 1])
+            else:
+                # per-(i,j) branch cut on the face that brackets z_s
+                g1, g2, w1, w2 = self._stencil_weights()
+                for gg, wgt in ((g1, w1), (g2, w2)):
+                    act = wgt != 0.0
+                    if not act.any():
+                        continue
+                    for gf in np.unique(gg[act]):
+                        m = act & (gg == gf)
+                        kk = int(gf)
+                        phiz_f[BI[m], BJ[m], kk] -= (wgt[m] * _src[m]
+                                                     / self.dz[kk])
         wz = np.empty(nz)
         wz[1:-1] = 0.5 * (dz[:-1] + dz[1:])
         wz[0] = dz[0]
@@ -753,27 +1214,43 @@ class TSDSolver:
             return R
         II, JJ = np.meshgrid(iu, jy, indexing='ij')
         xc = self.xc[iu] / self.chord
-        if self.profile is not None:
-            slope_t = self.profile['slope'](xc)[:, None]
-            slope_c = self.profile['camber'](xc)[:, None]
+        if self.nonplanar:
+            # per-(i,j) surface: local slopes, local normal projection
+            wu, wl = self._bc_terms()
         else:
-            slope_t = thickness_slope(xc, self.thick)[:, None]
-            slope_c = np.zeros_like(slope_t)
-        # NOTE: no cap here (cap kills LE suction); Newton-Krylov handles
-        # the stiff LE source robustly where SOR blew up.
-        if self.kutta_thick_only:
-            # FREE-CIRCULATION MODE 1 (thickness-only tangency):
-            # transpiration is the THICKNESS problem only (+dyt/dx upper,
-            # -dyt/dx lower). The lifting problem (camber + alpha) is
-            # carried entirely by the bound vortex sheet gamma_b and
-            # selected by the Kutta condition. Keeping `slope_c - alpha`
-            # here would prescribe part of the lift outside the
-            # circulation and make it unreducible.
-            wu = slope_t
-            wl = -slope_t
-        else:
-            wu = slope_t + slope_c - self.alpha
-            wl = -slope_t + slope_c - self.alpha
+            if self.profile is not None:
+                slope_t = self.profile['slope'](xc)[:, None]
+                slope_c = self.profile['camber'](xc)[:, None]
+            else:
+                slope_t = thickness_slope(xc, self.thick)[:, None]
+                slope_c = np.zeros_like(slope_t)
+            # NOTE: no cap here (cap kills LE suction); Newton-Krylov handles
+            # the stiff LE source robustly where SOR blew up.
+            if self.kutta_thick_only:
+                # FREE-CIRCULATION MODE 1 (thickness-only tangency):
+                # transpiration is the THICKNESS problem only (+dyt/dx upper,
+                # -dyt/dx lower). The lifting problem (camber + alpha) is
+                # carried entirely by the bound vortex sheet gamma_b and
+                # selected by the Kutta condition. Keeping `slope_c - alpha`
+                # here would prescribe part of the lift outside the
+                # circulation and make it unreducible.
+                wu = slope_t
+                wl = -slope_t
+            else:
+                wu = slope_t + slope_c - self.alpha
+                wl = -slope_t + slope_c - self.alpha
+        if self.kutta_thick_only and self.nonplanar:
+            # same split as the planar branch: the bound sheet carries the
+            # lifting part, the source carries the thickness problem only.
+            st, _sc = self._section_slopes()
+            wu = st
+            wl = -st
+            g = self._wing_geom()
+            if bool((g['zs_y'] != 0).any()) and os.environ.get(
+                    'WING3D_NP_TANGENT', '0') == '1':
+                vu, vl = self._v_surface()
+                wu = wu + g['zs_y'] * vu
+                wl = wl + g['zs_y'] * vl
         if self.bl_on and self.bl_dstar_u is not None:
             # Viscous-inviscid coupling: displacement surface
             #     y_u = y_c + y_t + delta*_u ,  y_l = y_c - y_t - delta*_l
@@ -796,8 +1273,24 @@ class TSDSolver:
             _mean = 0.5 * (ddu - ddl)      # camber    (seen by wav)
             wu = wu + (_half + _mean)
             wl = wl + (-_half + _mean)
-        R[II, JJ, k0] += wu / dzp
-        R[II, JJ, k0 - 1] += -wl / dzm
+        if not self.nonplanar:
+            R[II, JJ, k0] += wu / dzp
+            R[II, JJ, k0 - 1] += -wl / dzm
+            return R
+        # non-planar: the sheet sits on the z-face that brackets z_s(x_i,y_j)
+        # for THAT (i,j); the two adjacent face stencils are blended by
+        # `_stencil_weights` (theta = 1 at a node == the stock scheme).
+        g1, g2, w1, w2 = self._stencil_weights()
+        dz = self.dz
+        for gg, wgt in ((g1, w1), (g2, w2)):
+            act = wgt != 0.0
+            if not act.any():
+                continue
+            for gf in np.unique(gg[act]):
+                m = act & (gg == gf)
+                kk = int(gf)
+                R[II[m], JJ[m], kk + 1] += (wgt[m] * wu[m]) / dz[kk + 1]
+                R[II[m], JJ[m], kk] += -(wgt[m] * wl[m]) / dz[kk]
         return R
 
     # ------------------------------------------------------------------
@@ -897,6 +1390,18 @@ class TSDSolver:
             self.z[kp] - self.z[k0], 1e-12)
         wl = (self.phi[:, :, k0 - 1] - self.phi[:, :, km]) / max(
             self.z[k0 - 1] - self.z[km], 1e-12)
+        if self.nonplanar:
+            # per-(i,j) stencil: the surface plane moves with (x,y)
+            g = self._wing_geom()
+            ii, jj, ks = g['ii'], g['jj'], g['ks']
+            kpu = np.clip(ks + 1, 0, self.nz - 1)
+            kmu = np.clip(ks - 2, 0, self.nz - 1)
+            klu = np.clip(ks - 1, 0, self.nz - 1)
+            zu = np.maximum(self.z[kpu] - self.z[ks], 1e-12)
+            zl = np.maximum(self.z[klu] - self.z[kmu], 1e-12)
+            ix = np.ix_(ii, jj)
+            wu[ix] = (self.phi[ix + (kpu,)] - self.phi[ix + (ks,)]) / zu
+            wl[ix] = (self.phi[ix + (klu,)] - self.phi[ix + (kmu,)]) / zl
         return wu, wl, 0.5 * (wu + wl)
 
     def te_jump(self):
@@ -911,6 +1416,15 @@ class TSDSolver:
         """
         k0 = self.k0
         ite = self.wing_ix[-1]
+        if self.nonplanar:
+            g = self._wing_geom()
+            p = int(np.searchsorted(np.asarray(self.wing_ix), ite))
+            p = min(p, len(self.wing_ix) - 1)
+            ks = g['ks'][p]
+            jy = np.asarray(self.wing_jy)
+            out = np.zeros(self.ny)
+            out[jy] = (self.phi[ite, jy, ks] - self.phi[ite, jy, ks - 1])
+            return out
         return self.phi[ite, :, k0] - self.phi[ite, :, k0 - 1]
 
     def bl_march(self, Re=None, xtr=None):
@@ -1221,6 +1735,8 @@ class TSDSolver:
         ku2 = min(k0 + 2, self.nz - 1)
         kl1 = max(k0 - 1, 0)
         kl2 = max(k0 - 2, 0)
+        if self.nonplanar:
+            return self._loads_ij()
         cpu = surf_cp(ku1, ku2)
         cpl = surf_cp(kl1, kl2)
         CL = CD = 0.0
@@ -1278,6 +1794,8 @@ class TSDSolver:
             p_rat = rho ** gm
             return 2.0 / (gm * self.Minf ** 2) * (p_rat - 1.0)
 
+        if self.nonplanar:
+            return self._loads_ij(cp_of_g=cp_of_g)
         cpu = cp_of_g(gxu)
         cpl = cp_of_g(gxl)
         CL = CD = 0.0
@@ -1293,6 +1811,133 @@ class TSDSolver:
                 CD += (cpu[i, j] - cpl[i, j]) * st * dA
         S = self.chord * self.span
         return {'CL': CL / S, 'CD': CD / S, 'cpu': cpu, 'cpl': cpl}
+
+    def _cell_mask(self):
+        """(nc, ng) mask of mu cells whose planform cell carries a body.
+
+        Cells outside the planform have no physics: their tangency row is
+        replaced by `mu = 0` (an identity row), otherwise the system picks
+        up rows that are identically zero and the Newton solve is singular.
+        The stock rectangle has every cell active, so this is a no-op.
+        """
+        ng = len(self.wing_jy)
+        nc = self.n_ctrl
+        if not self.nonplanar or self.wing_mask is None:
+            return np.ones((nc, ng), dtype=bool)
+        g = self._wing_geom()
+        m = np.asarray(g['mask'], bool)
+        ii = np.asarray(g['ii'])
+        rows = np.array([int(np.argmin(np.abs(ii - iu)))
+                         for iu in np.asarray(self.wing_ix)[
+                             np.clip(np.asarray(self.i_ctrl, dtype=int), 0,
+                                     len(self.wing_ix) - 1)]])
+        return m[rows]
+
+    def _zero_rows(self, w, g_):
+        """Replace the rows of inactive mu cells by the identity row."""
+        cm = self._cell_mask()
+        if cm.all():
+            return w, g_
+        w = np.array(w, dtype=float, copy=True)
+        g_ = np.array(g_, dtype=float, copy=True)
+        w[~cm] = self.mu_b[~cm]
+        g_[~cm] = 0.0
+        return w, g_
+
+    def _camber_at(self, xr):
+        """Camber slope d(yc)/dx at (control station, span station).
+
+        `xr` is (nc, ng) in LOCAL chord units, so a tapered/twisted
+        multi-section planform gets its own camber at each station instead
+        of the root section's.
+        """
+        xr = np.asarray(xr, float)
+        pl = self.planform
+        if pl is not None and callable(pl.get('slope_c')):
+            Y = np.broadcast_to(
+                np.asarray(self.yc[np.asarray(self.wing_jy)])[None, :],
+                xr.shape)
+            return np.asarray(pl['slope_c'](xr, Y), float)
+        if self.profile is not None:
+            return np.asarray(self.profile['camber'](xr), float)
+        return np.zeros(xr.shape)
+
+    def _geom_target(self, slope_c, xcp_abs=None):
+        """(nc, ng) tangency target: the mean-plane normal velocity a
+        non-planar surface REQUIRES, i.e. dyc/dx + dz_s/dx - alpha_local
+        (+ the tangential h_y*v term of the local normal projection).
+
+        Reduces exactly to the stock (slope_c - alpha) broadcast when the
+        surface is planar, so nothing changes by default.
+        """
+        nc = len(slope_c)
+        base = np.asarray(slope_c, dtype=float) - self.alpha
+        if not self.nonplanar:
+            if base.ndim == 1:
+                return base[:, None] * np.ones((1, len(self.wing_jy)))
+            return base
+        g = self._wing_geom()
+        ii = np.asarray(g['ii'])
+        ng = len(g['jj'])
+        if xcp_abs is None:
+            rows = np.asarray(self.i_ctrl)
+        else:
+            rows = np.array([int(np.argmin(np.abs(self.xc[ii] - xq)))
+                             for xq in np.asarray(xcp_abs, float)])
+        tgt = base + g['zs_x'][rows] - (g['alpha'][rows] - self.alpha)
+        if bool((g['zs_y'] != 0).any()) and os.environ.get(
+                'WING3D_NP_TANGENT', '0') == '1':
+            vu, _vl = self._v_surface()
+            tgt = tgt + g['zs_y'][rows] * vu[rows]
+        return tgt * np.ones((1, ng))
+
+    def _loads_ij(self, cp_of_g=None):
+        """Lift/drag for a general (masked, non-planar) surface.
+
+        Same Cp definition and the same extrapolation-to-the-surface rule
+        as `loads`, applied per (i,j) at the local surface height. The area
+        weights are the cell areas of the ACTIVE mask, and the reference
+        area is the planform area (plan S) when one is installed, else
+        chord*span -- so a tapered flying wing is normalised by its own
+        area, not by a rectangle.
+        """
+        cpu_ij, cpl_ij = self._surf_cp_ij(cp_from_g=cp_of_g)
+        g = self._wing_geom()
+        ii, jj = g['ii'], g['jj']
+        st, _sc = self._section_slopes()
+        dxi = self.dx
+        # NOTE: sequential accumulation in the SAME (i-major) order as the
+        # planar `loads` loop, so that zsurf = 0 reproduces CL bit for bit
+        # (np.sum's pairwise order does not).
+        CL = CD = 0.0
+        for p, i in enumerate(ii):
+            dAi = dxi[min(int(i), len(dxi) - 1)]
+            for q, j in enumerate(jj):
+                if not g['mask'][p, q]:
+                    continue
+                dA = dAi * self.dy[min(int(j), len(self.dy) - 1)]
+                CL += (cpl_ij[p, q] - cpu_ij[p, q]) * dA
+                CD += (cpu_ij[p, q] - cpl_ij[p, q]) * st[p, q] * dA
+        S = self.S_ref()
+        out = {'CL': CL / S, 'CD': CD / S}
+        # keep the (nx,ny) shape the planar path returns for consumers
+        full_u = np.zeros((self.nx, self.ny))
+        full_l = np.zeros((self.nx, self.ny))
+        full_u[np.ix_(ii, jj)] = cpu_ij
+        full_l[np.ix_(ii, jj)] = cpl_ij
+        out['cpu'], out['cpl'] = full_u, full_l
+        return out
+
+    def S_ref(self):
+        """Reference area: the installed planform area, else chord*span."""
+        pl = self.planform
+        if pl is not None and 'chord' in pl and 'y' in pl:
+            y = np.asarray(pl['y'], dtype=float)
+            c = np.asarray(pl['chord'], dtype=float)
+            S = float(np.trapezoid(c, y))
+            if S > 0:
+                return S
+        return float(self.chord * self.span)
 
     def kutta_residual(self, upstream=0):
         """TE pressure-jump per wing span cell (Kutta rows).
@@ -1434,11 +2079,24 @@ class TSDSolver:
         kernel is 1/r^2 on the sheet and a midpoint stack of constant
         sub-panels gives +22*alpha mid-chord instead of -alpha.
         """
-        xs = np.asarray(self.x_ctrl, dtype=float) * self.chord
         ys = np.asarray(self.yc[np.asarray(self.wing_jy)], dtype=float)
-        nc, ng = len(xs), len(ys)
+        xrel = np.asarray(self.x_ctrl, dtype=float)      # 0..1 local chord
+        nc, ng = len(xrel), len(ys)
         if nc < 2 or ng < 1:
             return None
+        # ---- per-span station geometry (planform) ---------------------
+        # xle_l / c_l / z_l per station; the stock case is (0, chord, 0),
+        # which reproduces the single-section lattice exactly.
+        xle_l = np.zeros(ng)
+        c_l = np.full(ng, float(self.chord))
+        z_l = np.zeros(ng)
+        pl = self.planform
+        if pl is not None and 'c_j' in pl:
+            _jy = np.asarray(self.wing_jy)
+            xle_l = np.asarray(pl['xle_j'], float)[_jy]
+            c_l = np.maximum(np.asarray(pl['c_j'], float)[_jy], 1e-9)
+            z_l = np.asarray(pl['z_j'], float)[_jy]
+        xs = xrel * float(self.chord)
         try:
             nwk = max(1, int(os.environ.get('WING3D_KUTTA_KERNEL_WKP', '4')))
             wlen = float(os.environ.get('WING3D_KUTTA_KERNEL_WLEN', '3'))
@@ -1449,13 +2107,14 @@ class TSDSolver:
         # cells: chordwise between STATIONS (cell i carries the loading
         # Gamma_i = mu_i - mu_{i-1}, so its chord extent is exactly
         # [x_{i-1}, x_i], x_{-1} = LE), spanwise centred on a station.
-        ex = np.empty(nc + 1)
-        ex[0] = 0.0
-        ex[1:] = xs
+        exr = np.empty(nc + 1)      # RELATIVE cell edges (0 .. 1)
+        exr[0] = 0.0
+        exr[1:] = xrel
         ey = np.empty(ng + 1)
         ey[0] = -0.5 * self.span
         ey[1:ng] = 0.5 * (ys[:-1] + ys[1:])
         ey[ng] = 0.5 * self.span
+        exa = xle_l[:, None] + c_l[:, None] * exr[None, :]   # absolute x
         # horseshoe per cell: bound segment at the 1/4 chord, two legs to a
         # far downstream station (the trailed wake is IN the kernel, so its
         # downwash is inside the tangency equation instead of being smeared
@@ -1468,25 +2127,35 @@ class TSDSolver:
         seg = []          # (nseg, 2, 3) filament endpoints
         col = []          # (seg,) station cell index the filament belongs to
         wgt = []          # (seg,) share of that cell's loading it carries
-        xcp = np.empty(nc)          # chordwise control point (3/4 chord)
+        xcp = np.empty(nc)          # root-frame chordwise control point
+        xcpr = np.empty((nc, ng))   # 3/4 chord in LOCAL chord units
         ycp = 0.5 * (ey[:-1] + ey[1:])   # spanwise control point (mid-cell)
+        zcp = z_l.copy()
         for i in range(nc):
-            xq = ex[i] + 0.25 * (ex[i + 1] - ex[i])
-            xcp[i] = ex[i] + 0.75 * (ex[i + 1] - ex[i])
+            xcp[i] = self.chord * (0.25 * exr[i] + 0.75 * exr[i + 1])
             for l in range(ng):
                 y0, y1 = ey[l], ey[l + 1]
+                z0 = z_l[l]
+                z1 = z_l[min(l + 1, ng - 1)]
+                l1 = min(l + 1, ng - 1)
+                # chordwise cell [exr[i], exr[i+1]] at station l and at l+1
+                xa0, xb0 = exa[l, i], exa[l, i + 1]
+                xa1, xb1 = exa[l1, i], exa[l1, i + 1]
+                xcpr[i, l] = 0.25 * exr[i] + 0.75 * exr[i + 1]
                 c = i * ng + l
                 # The station cell carries the loading Gamma_i = mu_i -
                 # mu_{i-1} spread over [x_{i-1}, x_i]; distributing it over
                 # WING3D_KUTTA_KERNEL_SPLIT sub-horseshoes is a refinement
                 # of the same density, not a change of unknown.
                 for k in range(nsplit):
-                    xa = ex[i] + (ex[i + 1] - ex[i]) * k / nsplit
-                    xb = ex[i] + (ex[i + 1] - ex[i]) * (k + 1) / nsplit
-                    xqs = xa + 0.25 * (xb - xa)
+                    # sub-cell of the chordwise cell, same at both stations
+                    xqs0 = (xa0 + (xb0 - xa0) * k / nsplit
+                            + 0.25 * (xb0 - xa0) / nsplit)
+                    xqs1 = (xa1 + (xb1 - xa1) * k / nsplit
+                            + 0.25 * (xb1 - xa1) / nsplit)
                     f = 1.0 / nsplit
                     # bound vortex, +y (so +Gamma gives downwash aft of it)
-                    seg.append([[xqs, y0, 0.0], [xqs, y1, 0.0]])
+                    seg.append([[xqs0, y0, z0], [xqs1, y1, z1]])
                     col.append(c)
                     wgt.append(f)
                     # trailing legs: a CLOSED horseshoe, so the y0 leg runs
@@ -1495,19 +2164,20 @@ class TSDSolver:
                     # shared leg -- the classical VLM wake -- instead of
                     # summing (a same-direction bug measured as -0.76*alpha
                     # instead of -alpha on the exact flat plate).
-                    for yy, flip in ((y0, True), (y1, False)):
+                    for yy, zz, xq, flip in ((y0, z0, xqs0, True),
+                                             (y1, z1, xqs1, False)):
                         for kk in range(len(fars) - 1):
-                            a0 = xqs if kk == 0 else fars[kk]
-                            seg.append([[fars[kk + 1], yy, 0.0],
-                                        [a0, yy, 0.0]] if flip else
-                                       [[a0, yy, 0.0],
-                                        [fars[kk + 1], yy, 0.0]])
+                            a0 = xq if kk == 0 else fars[kk]
+                            seg.append([[fars[kk + 1], yy, zz],
+                                        [a0, yy, zz]] if flip else
+                                       [[a0, yy, zz],
+                                        [fars[kk + 1], yy, zz]])
                             col.append(c)
                             wgt.append(f)
         info = dict(nc=nc, ng=ng, seg=np.asarray(seg), col=np.asarray(col),
-                    wgt=np.asarray(wgt), ex=ex, ey=ey, xs=xs, ys=ys,
-                    xcp=xcp, ycp=ycp, xf=fars[-1], nwk=nwk, wlen=wlen,
-                    nsplit=nsplit)
+                    wgt=np.asarray(wgt), exr=exr, ey=ey, xs=xs, ys=ys,
+                    xcp=xcp, xcpr=xcpr, ycp=ycp, zcp=zcp, xf=fars[-1],
+                    nwk=nwk, wlen=wlen, nsplit=nsplit)
         return info
 
     def dlm_kernel(self, rebuild=False):
@@ -1548,9 +2218,18 @@ class TSDSolver:
         ed = seg[:, None, :, :]        # (nseg, 1, 2, 3)
         emask = np.ones((len(seg), 1), dtype=bool)
         P = np.zeros((nc * ng, 3))
+        _pl = self.planform if (self.planform is not None
+                                and 'c_j' in self.planform) else None
         for i in range(nc):
             for j in range(ng):
-                P[i * ng + j] = (info['xcp'][i], info['ycp'][j], 0.0)
+                if _pl is None:
+                    P[i * ng + j] = (info['xcp'][i], info['ycp'][j], 0.0)
+                else:
+                    jj = int(np.asarray(self.wing_jy)[j])
+                    P[i * ng + j] = (
+                        float(_pl['xle_j'][jj])
+                        + info['xcpr'][i, j] * float(_pl['c_j'][jj]),
+                        info['ycp'][j], info['zcp'][j])
         if os.environ.get('WING3D_KUTTA_KERNEL_PG', '0') == '1':
             # Prandtl-Glauert stretch (x -> x/beta) as an ABLATION: the
             # kernel is geometric by default so every Mach effect in the
@@ -1588,17 +2267,14 @@ class TSDSolver:
             return np.zeros((nc, ng))
         D = self.dlm_kernel()
         info = self._dlmInfo
-        x_at = np.asarray(info['xcp'], dtype=float) / self.chord
-        if self.profile is not None:
-            slope_c = np.asarray(self.profile['camber'](x_at), dtype=float)
-        else:
-            slope_c = np.zeros(nc)
-        g = (slope_c - self.alpha)[:, None] * np.ones((1, ng))
+        slope_c = self._camber_at(np.asarray(info['xcpr'], float))
+        g = self._geom_target(slope_c, np.asarray(info['xcp'], float))
         w = (D @ self.mu_b.ravel()).reshape(nc, ng)
         if self.kutta_te_kutta:
             # Kutta row in mu units: mu(TE) - mu(last-1) = 0
             w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
             g[-1, :] = 0.0
+        w, g = self._zero_rows(w, g)
         return w - g
 
     # ------------------------------------------------------------------
@@ -1789,12 +2465,8 @@ class TSDSolver:
             return np.zeros((nc, ng))
         B = self.dlm_hybrid_bias()
         info = self._dlmInfo
-        x_at = np.asarray(info['xcp'], dtype=float) / self.chord
-        if self.profile is not None:
-            slope_c = np.asarray(self.profile['camber'](x_at), dtype=float)
-        else:
-            slope_c = np.zeros(nc)
-        g = (slope_c - self.alpha)[:, None] * np.ones((1, ng))
+        slope_c = self._camber_at(np.asarray(info['xcpr'], float))
+        g = self._geom_target(slope_c, np.asarray(info['xcp'], float))
         _wu, _wl, wav = self.w_plane()
         iu = np.asarray(self.wing_ix)
         w_node = np.asarray(wav[np.ix_(iu, jy)], dtype=float)
@@ -1810,6 +2482,7 @@ class TSDSolver:
         if self.kutta_te_kutta:
             w[-1, :] = self.mu_b[-1, :] - self.mu_b[-2, :]
             g[-1, :] = 0.0
+        w, g = self._zero_rows(w, g)
         return w - g
 
     def hybrid_coupling_report(self, eps=1e-7):
@@ -1904,7 +2577,8 @@ class TSDSolver:
                 slope_c = float(self.profile['camber'](x_at))
             else:
                 slope_c = 0.0
-            rows[p, :] = wav[ip, jy] - (slope_c - self.alpha)
+            rows[p, :] = wav[ip, jy] - self._geom_target(
+                np.array([slope_c]), np.array([float(self.xc[ip])]))[0]
         return rows
 
     def mu_circulation(self):
