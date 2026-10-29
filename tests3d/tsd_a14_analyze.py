@@ -18,6 +18,19 @@ def row(p):
     g = d.get('gridinfo', {})
     r1 = np.asarray(d.get('resid_phys_mid_alpha', [np.nan]))
     r2 = np.asarray(d.get('resid_phys2_mid_alpha', [np.nan]))
+    # direct normalisation measure: the field's downwash response divided by
+    # the kernel's for the SAME doublet sheet, over the stations where the
+    # kernel is not small (|we|>0.25 alpha). This is the "1.36x" number.
+    ratio = float('nan')
+    if 'w_field' in d:
+        wf0 = np.asarray(d['w_field'])
+        j = wf0.shape[1] // 2
+        al = np.radians(d['alpha_deg'])
+        wf = wf0[:, j] / al
+        we = np.asarray(d['w_eq'])[:, j] / al
+        m = (np.abs(we) > 0.25) & (np.abs(wf) > 1e-9)
+        if m.sum():
+            ratio = float(np.median(wf[m] / we[m]))
     return dict(
         f=os.path.basename(p), M=d['M'], grid=d['grid'],
         thick=d.get('thick', '0'), bl=d.get('bl', '0'),
@@ -33,7 +46,8 @@ def row(p):
         zl=g.get('stencil_z_lo', float('nan')),
         dzb=g.get('dz_below_k0', float('nan')),
         dza=g.get('dz_above_k0', float('nan')),
-        nc=g.get('n_chord', nan0()),
+        nc=g.get('n_chord', nan0()), ns=g.get('n_span', nan0()),
+        ratio=ratio,
         prof=d.get('profile'), secs=d.get('secs', 0.0))
 
 
@@ -46,29 +60,29 @@ def main(pat='tests3d/a14_*.json'):
     if not fs:
         print('no files match', pat)
         return
-    hdr = ('%-46s %6s %-11s %s %s %2s %8s %7s %7s %6s %6s %6s' % (
+    hdr = ('%-46s %6s %-11s %s %s %2s %8s %7s %7s %6s %6s %6s %6s' % (
         'file', 'M', 'grid', 't', 'b', 'ep', 'CL', 'err%', 'G_mid',
-        'tip/mid', 'res1/a', 'res2/a'))
+        'tip/mid', 'res1/a', 'res2/a', 'wf/we'))
     print(hdr)
     print('-' * len(hdr))
     for p in fs:
         r = row(p)
         print('%-46s %6.3f %-11s %s %s %2d %8.5f %+7.2f %7.4f %6.3f '
-              '%+6.3f %+6.3f' % (
+              '%+6.3f %+6.3f %6.2f' % (
                   r['f'][:46], r['M'], r['grid'], r['thick'], r['bl'],
                   r['ep'], r['CL'], r['err'], r['gm'], r['tip'],
-                  r['r1m'], r['r2m']))
+                  r['r1m'], r['r2m'], r['ratio']))
     print('\nres2/a = mean resid_phys AFTER the reference subtraction; '
           'res1/a = before.  t = WING3D_KUTTA_THICK, b = WING3D_BL.\n')
     grid = [row(p) for p in fs if row(p)['M'] == 0.3 and row(p)['prof'] is False]
     if grid:
-        print('%-11s %6s %6s %8s %9s %9s %8s %9s' % (
+        print('%-11s %5s %5s %9s %9s %9s %8s %7s %7s' % (
             'grid', 'n_ch', 'n_sp', 'z_up/c', 'z_lo/c', 'dz_below',
-            'res1/a', 'normfac'))
+            'res1/a', 'normfac', 'wf/we'))
         for r in grid:
-            print('%-11s %6.0f %6.0f %8.5f %9.5f %9.4f %+8.3f %9.3f' % (
-                r['grid'], r['nc'], 0, r['zu'], r['zl'], r['dzb'],
-                r['r1m'], r['nf']))
+            print('%-11s %5.0f %5.0f %9.5f %9.5f %9.4f %+8.3f %7.3f %7.2f' % (
+                r['grid'], r['nc'], r['ns'], r['zu'], r['zl'], r['dzb'],
+                r['r1m'], r['nf'], r['ratio']))
 
 
 if __name__ == '__main__':
