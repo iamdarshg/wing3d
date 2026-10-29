@@ -1754,21 +1754,27 @@ class TSDSolver:
 
             dphi/dx(z=0+) - dphi/dx(z=0-) = dJ/dx        (dCp = 2 dJ/dx)
 
-        with J the jump the field carries (known exactly). The upper
-        side is taken from the field with a BOUNDED local extrapolation
-        (`_gx_upper_local`, weight <= 1, no dz amplification); the lower
-        side is the upper one minus the exact jump derivative
+        with J the jump the solve was GIVEN (`sheet_jump`: the free mu
+        sheet, F(x)*gamma_b, or the prescribed panel jump -- the doublet
+        strength is known exactly). The upper side is taken from the field
+        with a BOUNDED local extrapolation (`_gx_upper_local`, weight
+        <= 1, no dz amplification); the lower side is the upper one minus
+        the exact jump derivative
         (`_jump_cell_loading`, cell-integrated so it telescopes to
         Gamma). That removes the z-extrapolation from the lift entirely:
         measured dz spread 47.5% -> 1.1%, z-offset -9.7/+25.0% ->
-        -0.1/-0.4%, CL 0.0483-0.0486 vs the sheet's own 0.05156 (-6%).
+        -0.1/-0.4%, CL 0.0481-0.0486. In TSD order the estimator
+        reproduces the model's own circulation exactly (ratio 1.0000); in
+        `fp_loads` it lands 6.25% below it, which is the isentropic
+        pressure law (constant at fixed M), not the estimator.
 
         Consequence to report, not hide: on the stock 6-node chord the
         stock extrapolation was also (accidentally) compensating the
-        unresolved leading-edge suction cell, so the decontaminated CL
-        sits 13% BELOW the stock number at nz=16 and ~21% below
-        thin-airfoil finite-AR truth: the residual error is CHORDWISE
-        resolution (nx), not dz. See tests3d/a17_cpdecontam.py.
+        unresolved leading-edge suction cell. As the chord is refined
+        (nz=32, nx = 40/80/120) the stock CL climbs 0.0438/0.0523/0.0551
+        (+26%) while this estimator holds 0.0481/0.0519/0.0517, i.e. the
+        "dz floor" was entangled with chordwise resolution. See
+        tests3d/a17_cpdecontam.py.
         """
         return os.environ.get('WING3D_CPDECONTAM', '0') == '1'
 
@@ -1797,21 +1803,64 @@ class TSDSolver:
         t = min(max(t, -1.0), 1.0)
         return g0 + t * (g1 - g0)
 
-    def sheet_jump(self):
-        """Potential jump the STORED field carries on the wing nodes.
+    def sheet_jump(self, measured=False):
+        """Potential jump on the wing nodes, shape (len(wing_ix), len(wing_jy)).
 
-        phi[k0] - phi[k0-1] at the wing footprint, shape
-        (len(wing_ix), len(wing_jy)). Measured to equal the prescribed
-        doublet strength to 2% at every station and every nz -- this is
-        the exact quantity the decontamination uses, so it is read from
-        the field rather than re-derived from the closure mode.
+        Prescribed first (`_prescribed_jump`: the jump the SOLVE was given,
+        i.e. the doublet strength the task states is known exactly);
+        the field's own jump `phi[k0]-phi[k0-1]` only as a fallback.
+
+        Why not the field jump as the primary source (measured, nz=16
+        mid span): it is smeared at the leading edge -- 0.00982 against a
+        prescribed 0.01201 at the first chord node (-18%) -- because the
+        discrete field spreads the LE-singular jump over the first cell.
+        Feeding that into the identity costs 7% of CL and does not even
+        stabilise the z-offset test (0.5 dz: -18.2% instead of -0.4%),
+        since an off-plane sheet skews the measured jump as well.
         """
-        k0 = self.k0
         iu = np.asarray(self.wing_ix)
         jy = np.asarray(self.wing_jy)
-        if k0 < 1 or iu.size == 0 or jy.size == 0:
-            return np.zeros((iu.size, jy.size))
-        return (self.phi[iu, :, k0] - self.phi[iu, :, k0 - 1])[:, jy]
+        if measured or not self._prescribed_jump_available():
+            k0 = self.k0
+            if k0 < 1 or iu.size == 0 or jy.size == 0:
+                return np.zeros((iu.size, jy.size))
+            return (self.phi[iu, :, k0] - self.phi[iu, :, k0 - 1])[:, jy]
+        return self._prescribed_jump()
+
+    def _prescribed_jump_available(self):
+        return (self.k0 >= 1 and len(self.wing_ix) and len(self.wing_jy)
+                and ((self.kutta_free_mu and getattr(self, 'mu_b', None)
+                      is not None and self.mu_b.size)
+                     or (self.kutta_bound and self.gamma_b is not None)
+                     or self.wing_jump is not None))
+
+    def _prescribed_jump(self):
+        """The branch-cut jump the residual prescribes, on the wing nodes.
+
+        Mirrors residual()'s three closed forms -- free mu sheet,
+        F(x)*gamma_b bound vortex, prescribed panel jump -- scaled by the
+        same amplitude factors (wake_sign, wake_scale, k). The
+        `ramp*wake_G` case is deliberately NOT reconstructed here (the
+        residual recomputes wake_G live); `sheet_jump` falls back to the
+        field jump there.
+        """
+        iu = np.asarray(self.wing_ix)
+        jy = np.asarray(self.wing_jy)
+        xc = np.clip(self.xc[iu] / self.chord, 0.0, 1.0)
+        if (self.kutta_free_mu and getattr(self, 'mu_b', None) is not None
+                and self.mu_b.size):
+            jump = np.empty((iu.size, jy.size))
+            for p in range(jy.size):
+                jump[:, p] = np.interp(xc, self.x_ctrl, self.mu_b[:, p])
+        elif self.kutta_bound and self.gamma_b is not None:
+            jump = flat_plate_jump(xc)[:, None] * np.asarray(
+                self.gamma_b, dtype=float)[None, :]
+        else:
+            jump = np.asarray(self.wing_jump, dtype=float)
+        k = getattr(self, 'k', None)
+        if k is not None and len(k):
+            jump = jump * np.asarray(k, dtype=float)[None, :]
+        return self.wake_sign * getattr(self, 'wake_scale', 1.0) * jump
 
     def _jump_cell_loading(self):
         """d(jump)/dx per wing chord cell, cell-integrated.
