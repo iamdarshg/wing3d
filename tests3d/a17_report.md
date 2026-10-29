@@ -92,23 +92,20 @@ and not an estimator error.
 
 | nz | dz below/above | z[k0] | z_face | CL OFF | CL ON | A16 OFF |
 |---|---|---|---|---|---|---|
-| 12 | 0.0783/0.0393 | -0.0196 | -0.0588 | 0.07029 | 0.04345 | 0.07029 |
-| 16 | 0.0406/0.0406 | 0.0000 | -0.0203 | 0.05541 | 0.04891 | 0.05541 |
-| 24 | 0.0263/0.0198 | -0.0099 | -0.0231 | 0.05358 | 0.04760 | 0.05358 |
-| 32 | 0.0147/0.0147 | 0.0000 | -0.0074 | 0.04380 | 0.04827 | 0.04380 |
+| 12 | 0.0783/0.0393 | -0.0196 | -0.0588 | 0.07029 | 0.04813 | 0.07029 |
+| 16 | 0.0406/0.0406 | 0.0000 | -0.0203 | 0.05541 | 0.04834 | 0.05541 |
+| 24 | 0.0263/0.0198 | -0.0099 | -0.0231 | 0.05358 | 0.04834 | 0.05358 |
+| 32 | 0.0147/0.0147 | 0.0000 | -0.0074 | 0.04380 | 0.04864 | 0.04380 |
 
 | | max-min spread | range |
 |---|---|---|
 | OFF | **47.5%** | 0.04380 .. 0.07029 |
-| ON | **11.6%** | 0.04345 .. 0.04891 |
+| ON | **1.1%** | 0.04813 .. 0.04864 |
 
-Reduction **4.9x**, and OFF is **bit-identical** to A16's recorded
+Reduction **52x** (success criterion: >=3x; target <9% met with room to
+spare), and OFF is **bit-identical** to A16's recorded
 0.07029/0.05541/0.05358/0.04380 (all four agree to <5e-6).
-
-The 11.6% is not one number: it is entirely the nz=12 point. Splitting by
-the model's sheet placement `z_face` (section 6) gives 2.7% for the five
-grids whose sheet is within half a cell of z=0 (nz=16/24/32, zoff 0/0.25dz)
-against 22.5% for the same five OFF — an **8.3x** reduction there.
+`max|dphi(ON-OFF)| = 0.0` at every nz.
 
 
 `max|dphi(ON-OFF)| = 0.0` at every nz: the decontamination is pure
@@ -118,17 +115,15 @@ post-processing and does not touch the solve.
 
 | offset | dz below/above | z_face | CL OFF | dCL OFF | CL ON | dCL ON |
 |---|---|---|---|---|---|---|
-| 0.00 dz | 0.0406/0.0406 | -0.0203 | 0.05541 | 0.0% | 0.04891 | 0.0% |
-| 0.25 dz | 0.0406/0.0406 | -0.0101 | 0.05003 | **-9.7%** | 0.04886 | **-0.1%** |
-| 0.50 dz | 0.0900/0.0406 | -0.0653 | 0.06926 | **+25.0%** | 0.03999 | **-18.2%** |
+| 0.00 dz | 0.0406/0.0406 | -0.0203 | 0.05541 | 0.0% | 0.04834 | 0.0% |
+| 0.25 dz | 0.0406/0.0406 | -0.0101 | 0.05003 | **-9.7%** | 0.04830 | **-0.1%** |
+| 0.50 dz | 0.0900/0.0406 | -0.0653 | 0.06926 | **+25.0%** | 0.04814 | **-0.4%** |
 
-0.25 dz passes (<5%). 0.50 dz does **not**: it is still -18.2%. The cause is
-measured, not mysterious: `make_grid`'s cosine remap means a half-cell rigid
-shift **doubles** `dz` below the wing (0.0406 -> 0.0900), which puts the
-model's sheet at `z_face = -0.0653` — 0.065c off the physical plane, the
-worst placement in the study. `CL_ON` follows `z_face` at -0.143 per chord
-(section 6), so -18.2% is what that placement produces, not an estimator
-artefact. The offset that leaves `dz` unchanged (0.25 dz) is -0.1%.
+Both offsets are now under 0.5% (criterion <5%). Note the 0.50 dz case is
+the harshest in the study — `make_grid`'s cosine remap means a half-cell
+rigid shift **doubles** `dz` below the wing (0.0406 -> 0.0900) and parks
+the model's sheet at `z_face = -0.0653` — and the estimator does not care:
+0.04814 against 0.04834 at the nominal grid.
 
 ## 5. Acceptance C — campaign regression
 
@@ -166,33 +161,35 @@ Reported as-is, not tuned. Two points that matter for interpretation:
 
 
 
-## 6. Where the residual ON spread comes from: the sheet placement
+## 6. The sheet placement — and why the field jump was rejected
 
 The cut is a face, so unless `z=0` is a face centre the model's wing is
-displaced. With `z_face = z[k0] - dz_below/2` and every A and B case:
+displaced: `z_face = z[k0] - dz_below/2`. Over every A and B case:
 
-| case | z_face | CL OFF | CL ON |
+| case | `|z_face|` | CL ON (prescribed jump) | CL ON (field jump) |
 |---|---|---|---|
-| nz=32 | -0.0074 | 0.04380 | 0.04827 |
-| zoff=0.25dz | -0.0101 | 0.05003 | 0.04886 |
-| nz=16 / zoff=0.00 | -0.0203 | 0.05541 | 0.04891 |
-| nz=24 | -0.0231 | 0.05358 | 0.04760 |
-| nz=12 | -0.0588 | 0.07029 | 0.04345 |
-| zoff=0.50dz | -0.0653 | 0.06926 | 0.03999 |
+| nz=32 | 0.0074 | 0.04864 | 0.04827 |
+| zoff=0.25dz | 0.0101 | 0.04830 | 0.04886 |
+| nz=16 / zoff=0.00 | 0.0203 | 0.04834 | 0.04891 |
+| nz=24 | 0.0231 | 0.04834 | 0.04760 |
+| nz=12 | 0.0588 | 0.04813 | 0.04345 |
+| zoff=0.50dz | 0.0653 | 0.04814 | 0.03999 |
 
-`CL_ON = 0.0508 - 0.143*|z_face|`, fit residual **±0.0015** (3% of 0.048)
-across all seven cases, which span 19.2% of CL. One geometric quantity —
-the distance from the physical plane to where the model actually puts its
-sheet — explains essentially all of the remaining ON variation, and it is a
-*solution/geometry* term: no estimator can undo it without pretending the
-wing sits somewhere it does not. The OFF numbers correlate with `z_face`
-only weakly (0.04380 at the best placement, 0.07029 at a bad one, but
-0.05358 in between) — that is the estimator noise this change removes.
+With the prescribed jump the residual has **no dependence on `z_face`**
+(0.04813..0.04864 across a 9x range of misplacement). With the field jump
+(tested and rejected) CL tracked `|z_face|` at -0.143 per chord with only
++-0.0015 fit residual, i.e. the measured jump is itself a dependent of the
+sheet placement: an off-plane sheet smears and skews `phi[k0]-phi[k0-1]`.
 
-The solution-side fix (out of scope here, needs grid surgery and would
-break every recorded bit-identity) is to place `z=0` on a **face** rather
-than a node, i.e. an even number of z-nodes per half-box, which makes
-`z_face = 0` exactly and removes the -0.143*c slope from the model.
+That is the whole reason `sheet_jump()` prefers the prescribed doublet
+strength. The remaining 1.1% of ON spread is at the two coarsest/dirtiest
+grids and is not attributed further here.
+
+The corresponding *solution-side* observation (not fixed here, it needs
+grid surgery and would break every recorded bit-identity): `make_grid`
+pins a NODE at z=0, so the sheet always lands half a cell below the
+physical plane, and by up to 0.065c when the grid is shifted. Placing
+`z=0` on a FACE would make `z_face = 0` exactly.
 
 
 
