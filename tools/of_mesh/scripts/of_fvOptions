@@ -1,0 +1,17 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvOptions;
+}
+// Bound T so the janaf inversion cannot run away; standard robustness
+// measure for compressible simpleFoam on highly stretched BL meshes.
+limitTemperature
+{
+    type            limitTemperature;
+    active          yes;
+    selectionMode   all;
+    min             200;
+    max             4000;
+}

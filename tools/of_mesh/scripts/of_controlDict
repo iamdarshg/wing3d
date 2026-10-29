@@ -1,0 +1,35 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+application     rhoSimpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         2000;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   200;
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  10;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
+functions
+{
+    forces
+    {
+        type            forces;
+        libs            ("libforces.so");
+        patches         (".*");
+        rho             rhoInf;
+        rhoInf          1.0;
+        CofR            (0 0 0);
+        log             true;
+    }
+}

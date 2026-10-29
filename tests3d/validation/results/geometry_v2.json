@@ -1,0 +1,43 @@
+{
+ "label": "geometry_v2",
+ "results": [
+  {
+   "key": "naca0012_geom",
+   "t_c": 0.12,
+   "t_c_pub": 0.12,
+   "camber_max": 0.0,
+   "camber_pub": 0.0,
+   "camber_x": 0.0,
+   "te_gap": 0.0,
+   "te_gap_pub": 0.0,
+   "status": "PASS"
+  },
+  {
+   "key": "rae2822_geom",
+   "t_c": 0.1211,
+   "t_c_pub": 0.121,
+   "camber_max": 0.0126,
+   "camber_pub": 0.013,
+   "camber_x": 0.757,
+   "te_gap": 0.0,
+   "te_gap_pub": 0.0,
+   "status": "PASS"
+  },
+  {
+   "key": "dfvlr_r4_geom",
+   "t_c": 0.1338,
+   "t_c_pub": 0.135,
+   "camber_max": 0.021,
+   "camber_pub": 0.021,
+   "camber_x": 0.802,
+   "te_gap": 0.0051,
+   "te_gap_pub": 0.005,
+   "status": "PASS"
+  },
+  {
+   "key": "onera_m6_geom",
+   "status": "PENDING",
+   "reason": "M6 geometry lives in OF case generator, not TSD proxies"
+  }
+ ]
+}

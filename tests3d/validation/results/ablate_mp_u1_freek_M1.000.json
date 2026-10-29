@@ -1,0 +1,12 @@
+{
+ "tag": "u1_freek",
+ "geo": "dfvlr_r4",
+ "M": 1.0,
+ "span": 1.6,
+ "ep": 8,
+ "free_k": true,
+ "bc_rows": false,
+ "te_gap": 0.002,
+ "cl_tsd": 0.005466,
+ "secs": 581.9
+}

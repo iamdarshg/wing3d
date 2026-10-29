@@ -1,0 +1,12 @@
+{
+ "tag": "baseline",
+ "geo": "dfvlr_r4",
+ "M": 0.85,
+ "span": 6.0,
+ "ep": 8,
+ "free_k": false,
+ "bc_rows": false,
+ "te_gap": 0.002,
+ "cl_tsd": -0.847407,
+ "secs": 567.3
+}

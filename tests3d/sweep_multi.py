@@ -64,10 +64,11 @@ NEW_FREETIP = {
 FREETIP_LOWER_BOUND = {'dfvlr_r4': {'1.000': 0.21032}}
 FREETIP_BAND = 0.057          # +/-5.7%
 
-CORPUS_CAVEAT = ('86k corpus value; the new free-tip anchors for this '
-                 'geometry were NOT collected, so this anchor carries the '
-                 'corpus bias (known 30-50% low for dfvlr) -- treat the '
-                 'error as indicative only')
+CORPUS_CAVEAT = ('86k corpus value. Free-tip anchors supersede the corpus where '
+                 'they exist; at this (geometry, Mach) no free-tip anchor was '
+                 'collected, and the corpus is known 30-50% low for '
+                 'dfvlr_r4 (0.2674 vs 0.32682 at M0.85) -- treat this error '
+                 'as indicative only')
 
 
 def load_corpus():

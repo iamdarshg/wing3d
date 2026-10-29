@@ -1,0 +1,140 @@
+{
+ "_meta": {
+  "solver": "WING3D_IMPRINT=ll, PG capped at Mcrit 0.72, no dy",
+  "note": "err_fine uses fine-125k where available; err86 uses the 86k corpus; err86_corr = err vs 86k*1.28 (measured mesh ratio, clearly an estimate)"
+ },
+ "rows": [
+  {
+   "geo": "naca0012",
+   "M": 0.85,
+   "CL": 0.067343,
+   "anchor": 0.07280578,
+   "anchor_src": "corpus86k",
+   "secs": 470.7,
+   "err_pct": -7.5,
+   "corpus86k": 0.07280578,
+   "err86_pct": -7.5,
+   "err86_corr_pct": -27.74
+  },
+  {
+   "geo": "naca0012",
+   "M": 0.9,
+   "CL": 0.06816,
+   "anchor": 0.0774068,
+   "anchor_src": "corpus86k",
+   "secs": 704.9,
+   "err_pct": -11.95,
+   "corpus86k": 0.0774068,
+   "err86_pct": -11.95,
+   "err86_corr_pct": -31.21
+  },
+  {
+   "geo": "naca0012",
+   "M": 0.925,
+   "CL": 0.069201,
+   "anchor": 0.07989024,
+   "anchor_src": "corpus86k",
+   "secs": 596.9,
+   "err_pct": -13.38,
+   "corpus86k": 0.07989024,
+   "err86_pct": -13.38,
+   "err86_corr_pct": -32.33
+  },
+  {
+   "geo": "naca0012",
+   "M": 0.95,
+   "CL": 0.069903,
+   "anchor": 0.07997777,
+   "anchor_src": "corpus86k",
+   "secs": 609.9,
+   "err_pct": -12.6,
+   "corpus86k": 0.07997777,
+   "err86_pct": -12.6,
+   "err86_corr_pct": -31.72
+  },
+  {
+   "geo": "naca0012",
+   "M": 1.0,
+   "CL": 0.070447,
+   "anchor": 0.0628258,
+   "anchor_src": "corpus86k",
+   "secs": 607.8,
+   "err_pct": 12.13,
+   "corpus86k": 0.0628258,
+   "err86_pct": 12.13,
+   "err86_corr_pct": -12.4
+  },
+  {
+   "geo": "naca0012",
+   "M": 1.05,
+   "CL": 0.070044,
+   "anchor": 0.05792737,
+   "anchor_src": "corpus86k",
+   "secs": 696.0,
+   "err_pct": 20.92,
+   "corpus86k": 0.05792737,
+   "err86_pct": 20.92,
+   "err86_corr_pct": -5.53
+  },
+  {
+   "geo": "rae2822",
+   "M": 0.85,
+   "CL": 0.149979,
+   "anchor": 0.2509912,
+   "anchor_src": "corpus86k",
+   "secs": 568.9,
+   "err_pct": -40.25,
+   "corpus86k": 0.2509912,
+   "err86_pct": -40.25,
+   "err86_corr_pct": -53.32
+  },
+  {
+   "geo": "rae2822",
+   "M": 0.9,
+   "CL": 0.15105,
+   "anchor": 0.2730278,
+   "anchor_src": "corpus86k",
+   "secs": 610.0,
+   "err_pct": -44.68,
+   "corpus86k": 0.2730278,
+   "err86_pct": -44.68,
+   "err86_corr_pct": -56.78
+  },
+  {
+   "geo": "rae2822",
+   "M": 0.925,
+   "CL": 0.153512,
+   "anchor": 0.277834,
+   "anchor_src": "corpus86k",
+   "secs": 654.8,
+   "err_pct": -44.75,
+   "corpus86k": 0.277834,
+   "err86_pct": -44.75,
+   "err86_corr_pct": -56.83
+  },
+  {
+   "geo": "rae2822",
+   "M": 0.95,
+   "CL": 0.153699,
+   "anchor": 0.2592165,
+   "anchor_src": "corpus86k",
+   "secs": 440.6,
+   "err_pct": -40.71,
+   "corpus86k": 0.2592165,
+   "err86_pct": -40.71,
+   "err86_corr_pct": -53.68
+  },
+  {
+   "geo": "rae2822",
+   "M": 1.0,
+   "CL": 0.159601,
+   "anchor": 0.1885693,
+   "anchor_src": "corpus86k",
+   "secs": 454.7,
+   "err_pct": -15.36,
+   "corpus86k": 0.1885693,
+   "err86_pct": -15.36,
+   "err86_corr_pct": -33.88
+  }
+ ]
+}

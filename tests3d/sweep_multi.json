@@ -1,0 +1,572 @@
+{
+ "_meta": {
+  "agent": "A15 multi-geometry sweep",
+  "config": "WING3D_IMPRINT=ll WING3D_ENTROPY=1 WING3D_KUTTA=0 WING3D_BL=0",
+  "protocol": "grid (80, 32, 32), epochs 8, span 1.6, alpha 1.25 deg",
+  "caveat": "Unanchored geometries (naca2412/naca4412) report raw CL only -- no anchor exists.  Anchors grade against the NEW free-tip rhoCentralFoam values where they exist, else the 86k corpus with its known bias.",
+  "updated": "2026-10-29T19:41:50",
+  "n_points": 8,
+  "n_ok": 8
+ },
+ "points": {
+  "naca0012@M0.800": {
+   "geo": "naca0012",
+   "M": 0.8,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.06699525715109662,
+   "CD": 0.0016264680189343856,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.06787873164935102,
+     "nsup": 13
+    },
+    {
+     "ep": 1,
+     "CL": 0.06744086375869916,
+     "nsup": 31
+    },
+    {
+     "ep": 2,
+     "CL": 0.06721693774367332,
+     "nsup": 53
+    },
+    {
+     "ep": 3,
+     "CL": 0.06704363274290523,
+     "nsup": 74
+    },
+    {
+     "ep": 4,
+     "CL": 0.06698575422508692,
+     "nsup": 88
+    },
+    {
+     "ep": 5,
+     "CL": 0.06700099336147422,
+     "nsup": 101
+    },
+    {
+     "ep": 6,
+     "CL": 0.06695586021225503,
+     "nsup": 111
+    },
+    {
+     "ep": 7,
+     "CL": 0.06699525715109662,
+     "nsup": 117
+    }
+   ],
+   "cl_ep_last": 0.06699525715109662,
+   "cl_ep_drift": -0.0008834744982543913,
+   "nsup_last": 117,
+   "built_base": true,
+   "secs": 572.2994799613953,
+   "note": "",
+   "ram_free_mb_at_start": 1506,
+   "resolution": "campaign g80x32x32",
+   "anchor": 0.0571,
+   "anchor_src": "freetip_rhoCentralFoam",
+   "anchor_note": "AR1.6 free-tip; band +/-5.7%%",
+   "err_pct": 17.329697287384633,
+   "pass_band": false
+  },
+  "naca0012@M0.925": {
+   "geo": "naca0012",
+   "M": 0.925,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.06975093110040184,
+   "CD": 0.0016122723831129586,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.06892870608705585,
+     "nsup": 141
+    },
+    {
+     "ep": 1,
+     "CL": 0.06810852762426738,
+     "nsup": 180
+    },
+    {
+     "ep": 2,
+     "CL": 0.06875147580910254,
+     "nsup": 208
+    },
+    {
+     "ep": 3,
+     "CL": 0.06899323936124256,
+     "nsup": 843
+    },
+    {
+     "ep": 4,
+     "CL": 0.06940557739310964,
+     "nsup": 540
+    },
+    {
+     "ep": 5,
+     "CL": 0.06956603981104575,
+     "nsup": 356
+    },
+    {
+     "ep": 6,
+     "CL": 0.06952798529265262,
+     "nsup": 1202
+    },
+    {
+     "ep": 7,
+     "CL": 0.06975093110040184,
+     "nsup": 694
+    }
+   ],
+   "cl_ep_last": 0.06975093110040184,
+   "cl_ep_drift": 0.0008222250133459869,
+   "nsup_last": 694,
+   "built_base": false,
+   "secs": 544.92222905159,
+   "note": "",
+   "ram_free_mb_at_start": 1244,
+   "resolution": "campaign g80x32x32",
+   "anchor": 0.07989024,
+   "anchor_src": "corpus_86k",
+   "anchor_note": "86k corpus value; the new free-tip anchors for this geometry were NOT collected, so this anchor carries the corpus bias (known 30-50% low for dfvlr) -- treat the error as indicative only",
+   "err_pct": -12.69154892962915,
+   "pass_band": null
+  },
+  "naca0012@M1.000": {
+   "geo": "naca0012",
+   "M": 1.0,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.07052120672184506,
+   "CD": 0.001561271025262637,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.06964017217752567,
+     "nsup": 32500
+    },
+    {
+     "ep": 1,
+     "CL": 0.07028934812170383,
+     "nsup": 32290
+    },
+    {
+     "ep": 2,
+     "CL": 0.0703471913201198,
+     "nsup": 32668
+    },
+    {
+     "ep": 3,
+     "CL": 0.07043628602521143,
+     "nsup": 32588
+    },
+    {
+     "ep": 4,
+     "CL": 0.0703994563527415,
+     "nsup": 32817
+    },
+    {
+     "ep": 5,
+     "CL": 0.07048301878763252,
+     "nsup": 33181
+    },
+    {
+     "ep": 6,
+     "CL": 0.07048165711313253,
+     "nsup": 33728
+    },
+    {
+     "ep": 7,
+     "CL": 0.07052120672184506,
+     "nsup": 34350
+    }
+   ],
+   "cl_ep_last": 0.07052120672184506,
+   "cl_ep_drift": 0.000881034544319384,
+   "nsup_last": 34350,
+   "built_base": false,
+   "secs": 498.2945375442505,
+   "note": "",
+   "ram_free_mb_at_start": 2003,
+   "resolution": "campaign g80x32x32",
+   "anchor": 0.0628258,
+   "anchor_src": "corpus_86k",
+   "anchor_note": "86k corpus value; the new free-tip anchors for this geometry were NOT collected, so this anchor carries the corpus bias (known 30-50% low for dfvlr) -- treat the error as indicative only",
+   "err_pct": 12.248800209221463,
+   "pass_band": null
+  },
+  "naca2412@M0.800": {
+   "geo": "naca2412",
+   "M": 0.8,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.15418420219763448,
+   "CD": 0.003040442736193608,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.16608455482071188,
+     "nsup": 7
+    },
+    {
+     "ep": 1,
+     "CL": 0.15535535502123507,
+     "nsup": 31
+    },
+    {
+     "ep": 2,
+     "CL": 0.15483330897138503,
+     "nsup": 58
+    },
+    {
+     "ep": 3,
+     "CL": 0.15438144011873997,
+     "nsup": 75
+    },
+    {
+     "ep": 4,
+     "CL": 0.15421430163741667,
+     "nsup": 88
+    },
+    {
+     "ep": 5,
+     "CL": 0.15414809823917325,
+     "nsup": 98
+    },
+    {
+     "ep": 6,
+     "CL": 0.15414371631714036,
+     "nsup": 104
+    },
+    {
+     "ep": 7,
+     "CL": 0.15418420219763448,
+     "nsup": 114
+    }
+   ],
+   "cl_ep_last": 0.15418420219763448,
+   "cl_ep_drift": -0.011900352623077398,
+   "nsup_last": 114,
+   "built_base": true,
+   "secs": 472.99815011024475,
+   "note": "",
+   "ram_free_mb_at_start": 2686,
+   "resolution": "campaign g80x32x32"
+  },
+  "naca2412@M0.925": {
+   "geo": "naca2412",
+   "M": 0.925,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.15780184312587214,
+   "CD": 0.0032190507932788556,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.16812166886755325,
+     "nsup": 163
+    },
+    {
+     "ep": 1,
+     "CL": 0.1585985789256684,
+     "nsup": 246
+    },
+    {
+     "ep": 2,
+     "CL": 0.15650827163116632,
+     "nsup": 268
+    },
+    {
+     "ep": 3,
+     "CL": 0.15802600865137567,
+     "nsup": 542
+    },
+    {
+     "ep": 4,
+     "CL": 0.1574564018067987,
+     "nsup": 402
+    },
+    {
+     "ep": 5,
+     "CL": 0.15714106301980882,
+     "nsup": 574
+    },
+    {
+     "ep": 6,
+     "CL": 0.15739366235644286,
+     "nsup": 422
+    },
+    {
+     "ep": 7,
+     "CL": 0.15780184312587214,
+     "nsup": 385
+    }
+   ],
+   "cl_ep_last": 0.15780184312587214,
+   "cl_ep_drift": -0.01031982574168111,
+   "nsup_last": 385,
+   "built_base": false,
+   "secs": 488.50000405311584,
+   "note": "",
+   "ram_free_mb_at_start": 2338,
+   "resolution": "campaign g80x32x32"
+  },
+  "naca2412@M1.000": {
+   "geo": "naca2412",
+   "M": 1.0,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.16098716728745988,
+   "CD": 0.00326733660239513,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.16950481712833285,
+     "nsup": 37393
+    },
+    {
+     "ep": 1,
+     "CL": 0.16326050212855217,
+     "nsup": 36488
+    },
+    {
+     "ep": 2,
+     "CL": 0.16109199241329672,
+     "nsup": 42508
+    },
+    {
+     "ep": 3,
+     "CL": 0.16130240253521624,
+     "nsup": 45371
+    },
+    {
+     "ep": 4,
+     "CL": 0.1611812447045511,
+     "nsup": 46470
+    },
+    {
+     "ep": 5,
+     "CL": 0.16111632118974337,
+     "nsup": 47186
+    },
+    {
+     "ep": 6,
+     "CL": 0.16105662833865514,
+     "nsup": 47879
+    },
+    {
+     "ep": 7,
+     "CL": 0.16098716728745988,
+     "nsup": 48351
+    }
+   ],
+   "cl_ep_last": 0.16098716728745988,
+   "cl_ep_drift": -0.00851764984087297,
+   "nsup_last": 48351,
+   "built_base": false,
+   "secs": 490.10728788375854,
+   "note": "",
+   "ram_free_mb_at_start": 980,
+   "resolution": "campaign g80x32x32"
+  },
+  "naca4412@M0.800": {
+   "geo": "naca4412",
+   "M": 0.8,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.24127259769189088,
+   "CD": 0.004952627535704598,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.2643540572765501,
+     "nsup": 10
+    },
+    {
+     "ep": 1,
+     "CL": 0.24347110271573383,
+     "nsup": 36
+    },
+    {
+     "ep": 2,
+     "CL": 0.24223004589359817,
+     "nsup": 59
+    },
+    {
+     "ep": 3,
+     "CL": 0.24165925692638857,
+     "nsup": 72
+    },
+    {
+     "ep": 4,
+     "CL": 0.24145708113097106,
+     "nsup": 87
+    },
+    {
+     "ep": 5,
+     "CL": 0.24120420154178568,
+     "nsup": 94
+    },
+    {
+     "ep": 6,
+     "CL": 0.2412388103600784,
+     "nsup": 99
+    },
+    {
+     "ep": 7,
+     "CL": 0.24127259769189088,
+     "nsup": 106
+    }
+   ],
+   "cl_ep_last": 0.24127259769189088,
+   "cl_ep_drift": -0.02308145958465921,
+   "nsup_last": 106,
+   "built_base": true,
+   "secs": 569.7363505363464,
+   "note": "",
+   "ram_free_mb_at_start": 2252,
+   "resolution": "campaign g80x32x32"
+  },
+  "naca4412@M0.925": {
+   "geo": "naca4412",
+   "M": 0.925,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.2427390770777895,
+   "CD": 0.005001602569090443,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.26723093081135707,
+     "nsup": 188
+    },
+    {
+     "ep": 1,
+     "CL": 0.2521302909914193,
+     "nsup": 392
+    },
+    {
+     "ep": 2,
+     "CL": 0.24676662290586923,
+     "nsup": 290
+    },
+    {
+     "ep": 3,
+     "CL": 0.2441847278131118,
+     "nsup": 374
+    },
+    {
+     "ep": 4,
+     "CL": 0.2464297425816394,
+     "nsup": 275
+    },
+    {
+     "ep": 5,
+     "CL": 0.2452474655114755,
+     "nsup": 430
+    },
+    {
+     "ep": 6,
+     "CL": 0.24601402664720473,
+     "nsup": 424
+    },
+    {
+     "ep": 7,
+     "CL": 0.2427390770777895,
+     "nsup": 856
+    }
+   ],
+   "cl_ep_last": 0.2427390770777895,
+   "cl_ep_drift": -0.024491853733567576,
+   "nsup_last": 856,
+   "built_base": false,
+   "secs": 721.1894419193268,
+   "note": "",
+   "ram_free_mb_at_start": 1009,
+   "resolution": "campaign g80x32x32"
+  }
+ }
+}

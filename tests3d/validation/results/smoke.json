@@ -1,0 +1,32 @@
+{
+ "label": "smoke",
+ "results": [
+  {
+   "key": "naca0012_geom",
+   "t_c": 0.12,
+   "t_c_pub": 0.12,
+   "camber_max": 0.0,
+   "camber_pub": 0.0,
+   "camber_x": 0.0,
+   "status": "PASS"
+  },
+  {
+   "key": "rae2822_geom",
+   "t_c": 0.0628,
+   "t_c_pub": 0.121,
+   "camber_max": 0.0314,
+   "camber_pub": 0.0,
+   "camber_x": 0.432,
+   "status": "FAIL"
+  },
+  {
+   "key": "dfvlr_r4_geom",
+   "t_c": 0.0756,
+   "t_c_pub": 0.135,
+   "camber_max": 0.0378,
+   "camber_pub": 0.021,
+   "camber_x": 0.422,
+   "status": "FAIL"
+  }
+ ]
+}

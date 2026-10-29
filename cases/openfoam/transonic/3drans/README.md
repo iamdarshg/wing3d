@@ -15,13 +15,16 @@ and the sharp-TE section `om6_wing_section_sharp.dat`. The locally generated
 30-degree LE sweep, and taper 0.5625159853. The small rounded CAD tip is
 approximated as a capped loft tip; it is not an exact CAD tessellation.
 
-## Current run status (2026-10-22)
+## Current run status (2026-10-23)
 
 `tools/build_of3d_cases.py` prepares an M6 coarse case in `cases/m6_coarse/`.
-That generated case is local/ignored. It is queued in container `oftrans`
-behind the active DFVLR `rhoCentralFoam` batch; no M6 mesh or force result is
-available yet. Do not treat the case as a validated anchor until mesh
-statistics, y+, force histories, and at least two refinements are recorded.
-The requested `ctest_validate.py --suite flow --label of3d` currently reports
-all four flow anchors PENDING. No probe values or mesh-uncertainty bands have
-been inferred from the pending runs.
+The generated case is local/ignored and runs in container `oftrans` at
+`/tmp/of3d_m6_queue/m6_coarse`. The owner-launched first attempt failed in
+`snappyHexMesh` because OpenFOAM 2406 requires `minTwist` in
+`meshQualityControls`; the active retry adds `minTwist 0.02` and reruns
+`blockMesh -> snappyHexMesh -> checkMesh -> rhoSimpleFoam`. At restart,
+`snappyHexMesh -overwrite` was running; no mesh or force result is yet
+validated. Record the container logs, mesh statistics, y+, force histories,
+and at least two refinement levels before changing anchor status. The flow
+ctest has not been rerun in this restart; no probe values or mesh-uncertainty
+bands are inferred from pending runs.

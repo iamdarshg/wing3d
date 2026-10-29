@@ -1,0 +1,12 @@
+{
+ "tag": "u4_tegap0",
+ "geo": "dfvlr_r4",
+ "M": 0.925,
+ "span": 1.6,
+ "ep": 8,
+ "free_k": false,
+ "bc_rows": false,
+ "te_gap": 0.0,
+ "cl_tsd": -1.252353,
+ "secs": 715.7
+}

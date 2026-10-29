@@ -1,0 +1,12 @@
+{
+ "tag": "u2_bcrows",
+ "geo": "dfvlr_r4",
+ "M": 0.85,
+ "span": 1.6,
+ "ep": 8,
+ "free_k": false,
+ "bc_rows": true,
+ "te_gap": 0.002,
+ "cl_tsd": 0.438152,
+ "secs": 536.9
+}

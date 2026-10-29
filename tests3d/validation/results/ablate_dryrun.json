@@ -1,0 +1,11 @@
+{
+ "tag": "dryrun",
+ "results": [],
+ "env": {
+  "free_k": false,
+  "bc_rows": false,
+  "te_gap": 0.002,
+  "span": 6.0,
+  "ep": 8
+ }
+}
