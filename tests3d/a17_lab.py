@@ -185,6 +185,24 @@ def est(c, how):
         gL = np.array(gU)
         gL[np.ix_(c.wing_ix, c.wing_jy)] = gU[np.ix_(c.wing_ix,
                                                     c.wing_jy)] - gj
+    elif how == 'decontF':
+        # same, but the jump is read from the FIELD (phi[k0]-phi[k0-1])
+        gU = upper_local(c)
+        J = c.phi[np.ix_(c.wing_ix, c.wing_jy) + (c.k0,)] - \
+            c.phi[np.ix_(c.wing_ix, c.wing_jy) + (c.k0 - 1,)]
+        n = J.shape[0]
+        Jf = np.empty((n + 1, J.shape[1]))
+        Jf[0] = 0.0
+        Jf[1:n] = 0.5 * (J[:-1] + J[1:])
+        Jf[n] = J[-1]
+        x = c.x[np.asarray(c.wing_ix)]
+        dxi = np.empty(n)
+        dxi[:-1] = np.diff(x)
+        dxi[-1] = dxi[-2]
+        gj = (Jf[1:] - Jf[:-1]) / dxi[:, None]
+        gL = np.array(gU)
+        gL[np.ix_(c.wing_ix, c.wing_jy)] = gU[np.ix_(c.wing_ix,
+                                                    c.wing_jy)] - gj
     elif how == 'decont2':
         gU = upper_local(c)
         gj = gam_cell(c)
@@ -208,7 +226,7 @@ def est(c, how):
     return c.cp_of_g(gU), c.cp_of_g(gL)
 
 
-HOWS = ('fp', 'decont2', 'decont', 'node')
+HOWS = ('fp', 'decont2', 'decontF', 'node')
 ORDER = ('nz12', 'nz16', 'nz24', 'nz32', 'zoff25', 'zoff50')
 
 
