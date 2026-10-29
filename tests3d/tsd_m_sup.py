@@ -495,8 +495,11 @@ def run_sup(M, span=6.0, epochs=10, free_k=True, profile=None, section=None,
     ix = np.asarray(s.wing_ix)
     xc = s.xc[ix] / s.chord
     cl = float(np.trapezoid((L['cpl'][ix, j0] - L['cpu'][ix, j0]), xc))
-    print('M=%.2f: full-wing CL=%.4f  centerline cl=%.4f  Cfmax=%.2f' % (
-        M, L['CL'], cl, L['cpu'][ix, j0].max()), flush=True)
+    print('M=%.2f: full-wing CL=%.4f  centerline cl=%.4f  Cfmax=%.2f%s' % (
+        M, L['CL'], cl, L['cpu'][ix, j0].max(),
+        '  [CPDECONTAM=1: sheet-identity estimator, see A17]'
+        if os.environ.get('WING3D_CPDECONTAM', '0') == '1' else ''),
+        flush=True)
     return L, xc, ix, j0
 
 
