@@ -97,7 +97,9 @@ def study_C():
     from sweep_multi import apply_validated_env
     apply_validated_env()
     recs = []
-    for state in ('off', 'on'):
+    states = [q for q in os.environ.get('A17_C_STATES', 'off,on').split(',')
+              if q]
+    for state in states:
         os.environ['WING3D_CPDECONTAM'] = '1' if state == 'on' else '0'
         from tsd_coupled import build_case
         from tsd_m_sup import run_sup
@@ -149,7 +151,14 @@ if __name__ == '__main__':
     for key, fn in (('A', study_A), ('B', study_B), ('C', study_C),
                     ('D', study_D)):
         if what in (key, 'ALL'):
-            res[key] = fn()
+            new = fn()
+            if key == 'C' and isinstance(res.get('C'), list):
+                # merge by state so a single-state re-run keeps the pair
+                old = {r['state']: r for r in res['C']}
+                old.update({r['state']: r for r in new})
+                res['C'] = [old[k] for k in ('off', 'on') if k in old]
+            else:
+                res[key] = new
     json.dump(res, open(OUT, 'w'), indent=1)
     if 'A' in res:
         off = [r['CL_off'] for r in res['A']]
