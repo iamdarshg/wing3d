@@ -138,6 +138,12 @@ Reported as-is, not tuned. Two points that matter for interpretation:
   the LE-cell compensation the stock estimator was providing. Per the
   program honesty rule this is recorded as: *stable, but not better at
   this grid*.
+* The solve is untouched: `cp_decontam()` is reachable only from
+  `loads`, `fp_loads` and `_surf_edge`, none of which the residual,
+  `_apply_bc` or the frozen coefficient/rho builders call; measured
+  `max|dphi(ON-OFF)| = 0.0` on the diagnostic grid. **Caveat**: with
+  `WING3D_BL=1` the decontaminated edge Mach does feed the integral BL,
+  so the ON solve can differ there (BL is off in the campaign config).
 
 
 
