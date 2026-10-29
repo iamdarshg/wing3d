@@ -81,6 +81,27 @@ CENTRAL_ROWS = [
     ('ftc/dfvlr_r4_M1.000_a1.25_ny30', 'dfvlr_r4', 1.000),
 ]
 
+# ---------------------------------------------------------------------------
+# THE ANCHOR SET: one solver (rhoCentralFoam, a definition choice, not an
+# uncertainty), one mesh family (free-tip box, NY=30 span level).  Each row is
+# accepted only when CL has plateaued: |CL(t_last) - CL(t_last - 0.02)| / CL
+# < 1%.  Rows that ran out of CPU are reported as lower bounds and flagged.
+# ---------------------------------------------------------------------------
+ANCHOR_SET = [
+    ('naca0012', 0.800, 'naca0012_M0.800_a1.25_ny30'),
+    ('dfvlr_r4', 0.850, 'dfvlr_r4_M0.850_a1.25_ny30'),
+    ('dfvlr_r4', 0.925, 'dfvlr_r4_M0.925_a1.25_ny30'),
+    ('dfvlr_r4', 1.000, 'dfvlr_r4_M1.000_a1.25_ny30'),
+    ('rae2822', 0.850, 'rae2822_M0.850_a1.25_ny30'),
+    ('rae2822', 0.925, 'rae2822_M0.925_a1.25_ny30'),
+    ('rae2822', 1.000, 'rae2822_M1.000_a1.25_ny30'),
+]
+PLATEAU_TOL_PCT = 1.0
+# measured elsewhere in this report, carried as constants so the band
+# arithmetic in the write-up is auditable against the tables above
+SPAN_TERM_PCT = 5.2
+DOMAIN_TERM_PCT = 2.1
+
 STL = {'naca0012': 'naca0012.stl', 'dfvlr_r4': 'dfvlr_r4.stl',
        'rae2822': 'rae2822.stl'}
 
@@ -130,14 +151,30 @@ def stats(root, name, tmp):
         if x.isdigit():
             cells = int(x)
             break
-    r = sh(f'cd {c} && ls -t postProcessing/forces/*/coefficient*.dat | head -1')
-    out = [x for x in r.stdout.strip().splitlines() if x]
-    if not out:
+    r = sh(f'cd {c} && ls postProcessing/forces/*/coefficient*.dat 2>/dev/null')
+    files = [x for x in r.stdout.strip().splitlines() if x.strip()]
+    if not files:
         return None
-    p = fetch(root, name, out[-1], tmp)
-    if p is None:
+    # merge every restart segment (a continued run opens a new
+    # postProcessing/forces/<startTime>/ directory)
+    ts, cds, cls = [], [], []
+    for i, rel in enumerate(files):
+        p = fetch(root, name, rel, tmp, tag=f'coeff{i}')
+        if p is None:
+            continue
+        t1, c1, l1 = read_coeff(p)
+        ts.append(t1)
+        cds.append(c1)
+        cls.append(l1)
+    if not ts:
         return None
-    t, cd, cl = read_coeff(p)
+    t = np.concatenate(ts)
+    cd = np.concatenate(cds)
+    cl = np.concatenate(cls)
+    order = np.argsort(t, kind='stable')
+    t, cd, cl = t[order], cd[order], cl[order]
+    keep = np.concatenate(([True], np.diff(t) > 0))
+    t, cd, cl = t[keep], cd[keep], cl[keep]
     if len(t) < 3:
         return None
     k = max(3, int(0.7 * len(t)))
@@ -147,21 +184,35 @@ def stats(root, name, tmp):
     # CL at fixed simulated times, so meshes with different histories and
     # different time steps can still be compared at matched physics time
     at = {}
-    for tt in (0.01, 0.015, 0.02, 0.03, 0.04):
+    for tt in (0.01, 0.015, 0.02, 0.03, 0.04, 0.06, 0.08, 0.10, 0.12):
         if t[-1] >= tt >= t[0]:
             at['t=%.3f' % tt] = round(float(np.interp(tt, t, cl)), 5)
     # matched-window mean over t in [0.010, 0.020]: the fairest comparison
     # between meshes whose runs ended at different simulated times
     w = (t >= 0.010) & (t <= 0.020)
     wmean = round(float(cl[w].mean()), 5) if w.sum() >= 3 else None
+    # plateau test: CL on a 0.02-spaced ladder back from the final time
+    tl = float(t[-1])
+    ladder = []
+    for dtb in (0.0, 0.02, 0.04, 0.06):
+        tt = tl - dtb
+        if tt >= t[0] - 1e-12:
+            ladder.append([round(tt, 4), round(float(np.interp(tt, t, cl)), 5)])
+    ladder.reverse()          # ascending in time
+    d_last = None
+    if len(ladder) >= 2:
+        a, b = ladder[-2][1], ladder[-1][1]
+        d_last = round(abs(b - a) / abs(b) * 100.0, 3)
     return dict(cells=cells, rows=int(len(t)),
-                t_last=round(float(t[-1]), 5),
+                t_last=round(tl, 5),
                 t_first=round(float(t[0]), 5),
                 Cl=round(float(cl[-1]), 5), Cd=round(float(cd[-1]), 5),
                 Cl_tail=round(float(cl[tail].mean()), 5),
                 Cd_tail=round(float(cd[tail].mean()), 5),
                 Cl_plateau_spread=round(spread, 5),
                 Cl_window_010_020=wmean,
+                Cl_ladder=ladder,
+                Cl_plateau_delta_pct=d_last,
                 Cl_at=at,
                 Cl_plateau_pct=round(100.0 * spread / abs(float(cl[tail].mean())), 2))
 
@@ -376,11 +427,34 @@ def main():
         print(f'central {geom} M={mach:.3f} Cl={st["Cl_tail"]:.5f} '
               f'Cd={st["Cd_tail"]:.5f}')
 
+    # --- THE ANCHOR SET: one solver, one mesh family ------------------------
+    anchor_set = []
+    for geom, mach, name in ANCHOR_SET:
+        st = stats('ftc', name, tmp)
+        if st is None:
+            print(f'MISSING anchor row {name}', file=sys.stderr)
+            continue
+        vtp = wall_vtp('ftc', name, geom, tmp)
+        rows, bands = ([], [])
+        if vtp:
+            rows, bands, _nf, _nb = eta_table(vtp, mach)
+        ok = (st.get('Cl_plateau_delta_pct') is not None
+              and st['Cl_plateau_delta_pct'] < PLATEAU_TOL_PCT)
+        anchor_set.append(dict(case=f'ftc/{name}', geometry=geom, mach=mach,
+                               solver='rhoCentralFoam', mesh='NY=30',
+                               converged=ok, **st,
+                               wing_eta_dCp=rows, wing_eta_cl=bands))
+        print(f'anchor {geom:9s} M={mach:.3f} Cl={st["Cl"]:.5f} '
+              f'Cd={st["Cd"]:.5f} t={st["t_last"]:.3f} '
+              f'plateau_delta={st["Cl_plateau_delta_pct"]}% '
+              f'{"OK" if ok else "LOWER-BOUND"}')
+
     pay = dict(anchor=res, solver_spread=spread, span_study=span,
                domain_study=dom, central_rows=central_rows,
+               anchor_set=anchor_set,
                cascade_matrix=mat, cl_lifting_line=round(CL_LL, 5))
     json.dump(pay, open(os.path.join(FT, 'freetip_results.json'), 'w'), indent=1)
-    write_md(res, spread, span, mat, dom, central_rows)
+    write_md(res, spread, span, mat, dom, central_rows, anchor_set)
     shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -388,9 +462,11 @@ def fmt(v, spec='%+.1f%%'):
     return spec % v if isinstance(v, (int, float)) else '-'
 
 
-def write_md(res, spread, span, mat, dom=None, central_rows=None):
+def write_md(res, spread, span, mat, dom=None, central_rows=None,
+             anchor_set=None):
     dom = dom or []
     central_rows = central_rows or []
+    anchor_set = anchor_set or []
     import numpy as np
     L = []
     A = L.append
@@ -753,158 +829,136 @@ def write_md(res, spread, span, mat, dom=None, central_rows=None):
       '0.282 0.345 ...); that scatter is the weakness-2 artefact, not physics. '
       'Their overall unloading trend is nevertheless present in every row.\n')
 
-    # ---------------- recommendation -------------------------------------
-    cen_sorted = sorted(x['ny'] for x in span if x['solver'] == 'rhoCentralFoam')
-    top = max(cen_sorted) if cen_sorted else None
-    best = next((x for x in span
-                 if x['solver'] == 'rhoCentralFoam' and x['ny'] == top), None)
-    A('## Recommended anchor\n')
-    A('**Solver: rhoCentralFoam. Mesh: the finest affordable span level '
-      f'(NY={top if top else 30}).** Reasons, in order of evidential weight - '
-      'and explicitly *not* "because it agrees with the TSD":\n')
-    A('1. **Lower numerical dissipation.** The inviscid drag should be ~0 (only '
-      'induced drag, CL^2/(pi*AR) ~ 0.001). Measured CD at M0.80 naca0012: ')
-    if n15c and n15s:
-        A(f'rhoCentralFoam {n15c["Cd_tail"]:.4f} vs rhoSimpleFoam '
-          f'{n15s["Cd_tail"]:.4f} on the same mesh - the upwind/relaxed scheme '
-          'manufactures about twice the spurious entropy, and the gap widens '
-          f'under refinement ({n30c["Cd_tail"]:.4f} vs {n30s["Cd_tail"]:.4f} '
-          'at NY=30).')
-    A('2. **Second order in the smooth field.** rhoCentralFoam is Kurganov flux '
-      '+ vanLeer MUSCL; rhoSimpleFoam carries first-order upwind on the energy '
-      'and the transonic pressure flux.')
-    A('3. **No tuning parameters.** rhoCentralFoam has no relaxation factors and '
-      'no steady-state limiter; its answer is the limit of a time-accurate '
-      'evolution, so it cannot be tuned into agreement.')
-    A('4. **It is the campaign solver**, so the anchor stays comparable with the '
-      'rest of the OpenFOAM record.\n')
-    if best:
-        tgt = 0.05
-        dtsd = ((best['Cl_at'].get('t=0.020') or best['Cl_tail']) - tgt) / tgt * 100.0
-        A(f'Where it hurts: at M0.80 the TSD anchor is ~{tgt:.3f} and the '
-          f'recommended value is '
-          f'{(best["Cl_at"].get("t=0.020") or best["Cl_tail"]):.3f} '
-          f'({dtsd:+.0f}%), while the rhoSimpleFoam number was only ~-4%. '
-          'Recommending rhoCentralFoam makes the OF-vs-TSD agreement **worse**. '
-          'That is the price of picking the better-resolved solution and it is '
-          'the honest choice.\n')
-
-    # ---- band from the measured terms
-    band_txt = []
-    d1 = pct(n15c['Cl_tail'], n15s['Cl_tail']) if (n15s and n15c) else None
-    d2 = pct(n30c['Cl_tail'], n30s['Cl_tail']) if (n30s and n30c) else None
-    sp_step = None
-    if top and (top - 30) and (30 in cen) and (top in cen):
-        sp_step = pct(cen[top]['Cl_at'].get('t=0.020'),
-                      cen[30]['Cl_at'].get('t=0.020'))
-    ddom = None
-    if dom:
-        refd = next((x for x in dom if abs(x['ybox'] - 4.0) < 1e-6), None)
-        far = max(dom, key=lambda z: z['ybox'])
-        if refd and far is not refd:
-            ddom = pct(far['Cl_at'].get('t=0.020'), refd['Cl_at'].get('t=0.020'))
-        elif refd:
-            small = min(dom, key=lambda z: z['ybox'])
-            ddom = abs(pct(refd['Cl_at'].get('t=0.020'),
-                           small['Cl_at'].get('t=0.020')))
-    for lab, v in (('solver family at NY=15', d1),
-                   ('solver family at NY=30', d2),
-                   ('span step NY30->NY%d' % (top or 30), sp_step),
-                   ('domain (tip clearance)', ddom)):
-        if v is not None:
-            band_txt.append(f'{lab} {v:+.1f}%')
-    A('**Band.** Measured sensitivity terms on naca0012 M0.80, transferred '
-      'unchanged to the other rows because the equivalent study was not '
-      'affordable for them: ' + '; '.join(band_txt) + '.\n')
-    _sv = [abs(v) for v in (d1, d2) if v is not None]
-    solver_term = (sum(_sv) / len(_sv)) if _sv else 20.0
-    span_term = abs(sp_step) if sp_step is not None else 12.0
-    dom_term = abs(ddom) if ddom is not None else 2.0
-    total = (solver_term ** 2 + span_term ** 2 + dom_term ** 2) ** 0.5
-    A(f'Combining the three independent terms in quadrature: '
-      f'solver {solver_term:.0f}% (scheme, not convergence - see the same-mesh '
-      f'pairs), span {span_term:.1f}%, domain {dom_term:.1f}% -> '
-      f'**+-{total:.0f}%** per row. Compared with the previous version: the '
-      'domain term is now *measured* (2%) instead of a +-25% guess, and the '
-      'span term fell from 12-15% to ~5%; the solver-family spread is the one '
-      'term that does not shrink under refinement and it now dominates the '
-      'band. That residual is a model-form uncertainty between two legitimate '
-      'discretisations, not a convergence error, and it cannot be removed '
-      'without a higher-order implicit scheme.')
-    A('CD carries at least the same relative band; the CD column of the '
-      'rhoCentralFoam rows is quoted at each run\'s terminal time and some are '
-      'still drifting (flagged in the convergence tables).\n')
-    A(f'Lifting-line reference for AR 1.6 at alpha={ALPHA_DEG} deg, a0=2*pi: '
-      f'CL_LL = {CL_LL:.3f}.\n')
-
-    # ---- final anchor table
-    bw = total / 100.0
-    A('| geometry | M | solver | mesh | cells | CL | CD | CL band (+-%d%%) |'
-      % int(round(total)))
-    A('|---|---|---|---|---|---|---|---|')
-    for r in res:
-        if r['config'] != 'free-tip':
-            continue
-        key = (r['geometry'], round(r['mach'], 3))
-        src = next((x for x in central_rows
-                    if (x['geometry'], round(x['mach'], 3)) == key), None)
-        if key == ('naca0012', 0.8) and best:
-            val = best['Cl_at'].get('t=0.020') or best['Cl_tail']
-            note, mesh, cells = ('rhoCentralFoam', f'NY={best["ny"]}',
-                                 best['cells'])
-            cdv = best['Cd_tail']
-        elif src:
-            val = src['Cl_at'].get('t=0.020') or src['Cl_tail']
-            note, mesh, cells = 'rhoCentralFoam', 'NY=30', src['cells']
-            cdv = src['Cd_tail']
-        else:
-            val, note, mesh, cells = r['Cl_tail'], 'rhoSimpleFoam', 'NY=15', r['cells']
-            cdv = r['Cd_tail']
-        A(f'| {r["geometry"]} | {r["mach"]:.3f} | {note} | {mesh} | {cells} | '
-          f'{val:.4f} | {cdv:.4f} | {val * (1 - bw):.4f} - {val * (1 + bw):.4f} |')
+    # ---------------- THE ANCHOR SET --------------------------------------
+    A('\n## Anchor set - one solver, one mesh family\n')
+    A('**The solver is now a definition, not a variable.** rhoCentralFoam is the '
+      'anchor solver and the rhoSimpleFoam rows in the tables above are '
+      'superseded. The choice was made on resolution grounds, fixed before the '
+      'runs: it is second order (Kurganov flux + vanLeer MUSCL) where '
+      'rhoSimpleFoam puts first-order upwind on the energy and the transonic '
+      'pressure flux, it produces roughly half the spurious inviscid drag '
+      '(CD 0.012-0.017 vs 0.028 on the same mesh), and it has no relaxation '
+      'factors or steady-state limiter that could be tuned. '
+      'The ~22% rhoSimpleFoam-vs-rhoCentralFoam spread that dominated the '
+      'previous band is therefore **not carried as an uncertainty**: it is the '
+      'difference between two legitimate discretisations, we pick one, and '
+      'every row of the comparison is measured with that same one. That is '
+      'legitimate because the choice is (i) a priori and identical for every '
+      'row, so the TSD-vs-OF comparison stays internally consistent, (ii) made '
+      'against the *lower*-dissipation solver, and (iii) not made on the basis '
+      'that it agrees with the TSD - it makes agreement worse. What is '
+      'legitimately *not* claimed is that the other discretisation is wrong; '
+      'the size of the choice is recorded above so a reader can widen the band '
+      'by 22% if they prefer the upwind family.\n')
+    A('Acceptance rule: a row is **converged** only when CL at the final time '
+      'differs from CL one 0.02 earlier by < 1%. `ladder` gives CL at three '
+      'successive times so the plateau is auditable; rows that hit the CPU '
+      'budget before meeting the rule are labelled **lower bound** and are '
+      'excluded from the band arithmetic (they would bias it low or high '
+      'unpredictably).\n')
+    A('| geometry | M | cells | CL | CD | t_end | ladder (t: CL) | last-two '
+      'delta | status |')
+    A('|---|---|---|---|---|---|---|---|---|')
+    for x in anchor_set:
+        lad = '  '.join(f'{t:.3f}:{c:.5f}' for t, c in x['Cl_ladder'])
+        st = ('**converged**' if x['converged']
+              else 'lower bound')
+        dl = x['Cl_plateau_delta_pct']
+        dlt = f'{dl:.2f}%' if isinstance(dl, (int, float)) else 'n/a'
+        A(f'| {x["geometry"]} | {x["mach"]:.3f} | {x["cells"]} | '
+          f'{x["Cl"]:.5f} | {x["Cd"]:.5f} | {x["t_last"]:.3f} | {lad} | '
+          f'{dlt} | {st} |')
     A('')
-    done = [x for x in central_rows]
-
-    def ct(x):
-        return x['Cl_at'].get('t=0.020') or x['Cl_tail']
-
-    d85 = next((x for x in done if abs(x['mach'] - 0.85) < 1e-6), None)
-    d100 = next((x for x in done if abs(x['mach'] - 1.00) < 1e-6), None)
-    if d85:
-        A(f'Caveat on the moved geometry rows: dfvlr_r4 M0.850 reached CL '
-          f'{ct(d85):.4f} at t=0.020 and M1.000 reached CL {ct(d100):.4f} '
-          f'(Cd {d100["Cd_tail"]:.4f})' if d100 else
-          f'Caveat on the moved geometry row: dfvlr_r4 M0.850 reached CL '
-          f'{ct(d85):.4f} at t=0.020')
-        A(', in both cases while still rising, so they are *lower bounds* on '
-          'the rhoCentralFoam values rather than settled numbers. ')
-        if d100:
-            s_c = pct(ct(d100), ct(d85))
-            s_s = pct(0.2269, 0.2719)
-            A(f'The transonic slope they imply, M0.85 -> M1.00, is '
-              f'{s_c:+.1f}% on rhoCentralFoam against {s_s:+.1f}% on '
-              'rhoSimpleFoam: the better-resolved solver produces a markedly '
-              '*steeper* transonic collapse, which is the slope the TSD has to '
-              'reproduce. Against rhoSimpleFoam the two rows move '
-              f'{pct(ct(d85), 0.2719):+.0f}% and {pct(ct(d100), 0.2269):+.0f}%, '
-              'i.e. the solver spread is smaller at M1.00 than the 20-25% seen '
-              'on the symmetric NACA0012 - but both are rising at their stop, '
-              'so that comparison is provisional.')
-        A('\n')
-    A('Coverage: naca0012 M0.80 is on the recommended solver at the finest span '
-      f'level (NY={top}); '
-      + (', '.join(f'{x["geometry"]} M{x["mach"]:.3f}' for x in done)
-         + ' are on rhoCentralFoam at NY=30 (the dfvlr bracket requested for '
-         'priority 3). ' if done else '')
-      + 'The %d remaining rows (dfvlr M0.925 and the three rae2822 points) are '
-      'still rhoSimpleFoam on the NY=15 mesh and are marked as such in the '
-      'solver and mesh columns. Moving them is the outstanding item: at '
-      '~2-4 s/step for 269k cells and ~1000 steps to t=0.02, that is ~0.7-1.1 h '
-      'per case on this container.\n' % max(0, 7 - 1 - len(done)))
-    A('**Net recommendation.** Grade the TSD against the rhoCentralFoam rows '
-      f'with a +-{total:.0f}% CL band. Do not mix the rhoSimpleFoam rows into '
-      'the same comparison: they sit 20-25% low for a purely numerical reason.')
+    conv = [x for x in anchor_set if x['converged']]
+    low = [x for x in anchor_set if not x['converged']]
+    if conv:
+        A(f'{len(conv)} of {len(anchor_set)} rows met the <1% rule: '
+          + ', '.join(f'{x["geometry"]} M{x["mach"]:.3f}' for x in conv) + '.')
+    if low:
+        A(f' Still lower bounds after the CPU budget: '
+          + ', '.join(
+              f'{x["geometry"]} M{x["mach"]:.3f} '
+              + (f'(delta {x["Cl_plateau_delta_pct"]:.1f}%)'
+                 if isinstance(x["Cl_plateau_delta_pct"], (int, float))
+                 else (f'(only t={x["t_last"]:.3f}, no 0.02 ladder yet)'))
+              for x in low)
+          + '.')
     A('\n')
+
+    # ---------------- recommendation -------------------------------------
+    A('## Final anchor table\n')
+    A('Band per row is built only from terms that are *measurements of this '
+      'anchor*, not from the solver choice:\n')
+    A(f'- **span** +-{SPAN_TERM_PCT:.1f}% - measured, NY=30 -> NY=60 CL change '
+      '(see the span-convergence section). Caveat: that comparison was made at '
+      't=0.02 for both levels before the long integrations existed, so it is '
+      'the best available estimate of the span term rather than a converged '
+      'one; re-measuring it with NY=60 run to t=0.12 is the top open item.')
+    A(f'- **domain** +-{DOMAIN_TERM_PCT:.1f}% - measured, 2.7x tip-clearance '
+      'reduction moves CL 2.1% (see the domain-size section).')
+    tc = []
+    for x in anchor_set:
+        if x['converged'] and isinstance(x['Cl_plateau_delta_pct'], (int, float)):
+            tc.append(abs(x['Cl_plateau_delta_pct']))
+    tc_term = max(tc) if tc else 1.0
+    A(f'- **time convergence** +-{tc_term:.1f}% - the largest measured '
+      'last-two-window CL delta among the converged rows (acceptance rule: '
+      '<1% per 0.02 of simulated time). This is the term the previous version '
+      'was missing: it stopped at t=0.02 with 2-3% per 0.01 still drifting and '
+      'folded that drift into a guessed +-25%.')
+    total = (SPAN_TERM_PCT ** 2 + DOMAIN_TERM_PCT ** 2 + tc_term ** 2) ** 0.5
+    A(f'\nQuadrature: sqrt({SPAN_TERM_PCT:.1f}^2 + {DOMAIN_TERM_PCT:.1f}^2 + '
+      f'{tc_term:.1f}^2) = **+-{total:.1f}%** for a converged row. '
+      '**The solver-family term is deliberately absent.** That is a definition '
+      'choice, not a hidden error: rhoCentralFoam is *the* anchor solver '
+      '(second order, half the spurious inviscid drag, no relaxation tuning, '
+      'fixed before these runs), every row is measured with it, and the 22% '
+      'difference to rhoSimpleFoam is recorded in the tables above so the '
+      'reader can widen the band if they disagree with the choice. Removing a '
+      'systematic choice from an uncertainty budget is legitimate only because '
+      'it is applied identically to every row and was not selected for '
+      'agreement with the TSD.\n')
+    A('| geometry | M | cells | CL | CD | t_end | band | status |')
+    A('|---|---|---|---|---|---|---|---|')
+    for x in anchor_set:
+        if x['converged']:
+            bw = total / 100.0
+            band = f'+-{total:.1f}% ({x["Cl"] * (1 - bw):.4f}-{x["Cl"] * (1 + bw):.4f})'
+            stt = 'converged'
+        else:
+            dl = x['Cl_plateau_delta_pct']
+            if isinstance(dl, (int, float)):
+                bw = ((SPAN_TERM_PCT ** 2 + DOMAIN_TERM_PCT ** 2
+                       + abs(dl) ** 2) ** 0.5) / 100.0
+                band = (f'+-{bw * 100:.0f}% ({x["Cl"] * (1 - bw):.4f}-'
+                        f'{x["Cl"] * (1 + bw):.4f})')
+                stt = f'**lower bound** (still moving {abs(dl):.1f}%/0.02)'
+            else:
+                band = 'n/a'
+                stt = '**lower bound** (run too short for a ladder)'
+        A(f'| {x["geometry"]} | {x["mach"]:.3f} | {x["cells"]} | {x["Cl"]:.4f} '
+          f'| {x["Cd"]:.4f} | {x["t_last"]:.3f} | {band} | {stt} |')
+    A('')
+    missing = [r for r in ANCHOR_SET
+               if not any(abs(x['mach'] - r[1]) < 1e-9 and x['geometry'] == r[0]
+                          for x in anchor_set)]
+    if missing:
+        A('Not run at all on the anchor solver/mesh: '
+          + ', '.join(f'{g} M{m:.3f}' for g, m, _n in missing)
+          + '. The older rhoSimpleFoam/NY=15 numbers for those rows are in the '
+          'tables earlier in this file and are **superseded** - they are a '
+          'different discretisation and 20-25% lower, so they must not be used '
+          'in a TSD comparison.\n')
+    A(f'Lifting-line reference for AR 1.6 at alpha={ALPHA_DEG} deg, a0=2*pi: '
+      f'CL_LL = {CL_LL:.3f}. The converged naca0012 M0.80 value '
+      + (f'{anchor_set[0]["Cl"]:.3f} sits '
+         f'{100 * (anchor_set[0]["Cl"] - CL_LL) / CL_LL:+.1f}% from it.'
+         if anchor_set else '')
+      + '\n')
+    A('**Net recommendation.** Grade the TSD against the rows above with the '
+      f'quoted band (+-{total:.1f}% for the converged rows). Treat the '
+      'lower-bound rows as indicative only until they are re-run to the same '
+      't=0.12 window.\n')
     A('## Reproduce\n')
     A('```\n'
       'python cases/openfoam/transonic/freetip/tools/build_freetip_cases.py\n'
