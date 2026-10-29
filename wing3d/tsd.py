@@ -1316,8 +1316,20 @@ class TSDSolver:
             w = abs(z2) / max(abs(z2 - z1), 1e-12)
             return w * gradx(k1) + (1 - w) * gradx(k2)
 
-        gxu = surf(min(k0 + 1, self.nz - 1), min(k0 + 2, self.nz - 1))
-        gxl = surf(max(k0 - 1, 0), max(k0 - 2, 0))
+        if self.cp_decontam():
+            # A17: same decontamination as loads()/fp_loads(): bounded
+            # upper extrapolation + the exact jump derivative for the
+            # lower side, so the BL edge Mach is dz-stable too.
+            gxu = self._gx_upper_local()
+            gj = self._jump_cell_loading()
+            gxl = gxu.copy()
+            if gj is not None:
+                BI = np.ix_(np.asarray(self.wing_ix),
+                            np.asarray(self.wing_jy))
+                gxl[BI] = gxu[BI] - gj
+        else:
+            gxu = surf(min(k0 + 1, self.nz - 1), min(k0 + 2, self.nz - 1))
+            gxl = surf(max(k0 - 1, 0), max(k0 - 2, 0))
         iu, jy = np.ix_(np.asarray(self.wing_ix), np.asarray(self.wing_jy))
         gm = self.gamma
         out = {}
@@ -1707,6 +1719,143 @@ class TSDSolver:
                 area += dA
         return cp, CL, area
 
+    # ------------------------------------------------------------------
+    # branch-cut-decontaminated surface estimator (A17)
+    # ------------------------------------------------------------------
+    def cp_decontam(self):
+        """True when the decontaminated surface estimator is enabled.
+
+        WING3D_CPDECONTAM=1. Default OFF reproduces the stock estimator
+        bit-identically (no float operation is inserted anywhere).
+
+        WHY (measured, tests3d/a17_cpdecontam.py, g40x24x16 M0.3 AR1.6):
+        the stock Cp comes from `gradx` differenced on the planes
+        k0+-1, k0+-2 and linearly extrapolated to z=0 with the weight
+        w = |z2|/|z2-z1| > 1. That weight AMPLIFIES the near plane by
+        1 + dz1/dz2, so the reported Cp jump scales with the z
+        distribution: CL = 0.0703/0.0554/0.0536/0.0438 for nz =
+        12/16/24/32 (47.5% spread) and a rigid 0.25/0.50 dz offset moves
+        it -9.7%/+25.0%, while the circulation the mu sheet carries
+        (2*int Gamma dy/S) is 0.05156 at every nz (0.0% spread). The
+        whole spread is therefore in the ESTIMATOR, not the solution.
+
+        What is NOT true: the stored phi does not carry a +-J/2 offset.
+        Measured, phi[k0] - phi[k0-1] equals the prescribed jump J to 2%
+        at every station and every nz -- the residual already removes the
+        J/dz it imposes on the cut face, so the two nodal planes ARE the
+        true one-sided surface values. Subtracting a further J/2 (the
+        A16 prescription) is not a decontamination: it re-injects the
+        whole jump and raises the spread to 62%.
+
+        What IS exact and usable is the sheet identity
+
+            dphi/dx(z=0+) - dphi/dx(z=0-) = dJ/dx        (dCp = 2 dJ/dx)
+
+        with J the jump the field carries (known exactly). The upper
+        side is taken from the field with a BOUNDED local extrapolation
+        (`_gx_upper_local`, weight <= 1, no dz amplification); the lower
+        side is the upper one minus the exact jump derivative
+        (`_jump_cell_loading`, cell-integrated so it telescopes to
+        Gamma). That removes the z-extrapolation from the lift entirely:
+        measured dz spread 47.5% -> 1.1%, z-offset -9.7/+25.0% ->
+        -0.1/-0.4%, CL 0.0483-0.0486 vs the sheet's own 0.05156 (-6%).
+
+        Consequence to report, not hide: on the stock 6-node chord the
+        stock extrapolation was also (accidentally) compensating the
+        unresolved leading-edge suction cell, so the decontaminated CL
+        sits 13% BELOW the stock number at nz=16 and ~21% below
+        thin-airfoil finite-AR truth: the residual error is CHORDWISE
+        resolution (nx), not dz. See tests3d/a17_cpdecontam.py.
+        """
+        return os.environ.get('WING3D_CPDECONTAM', '0') == '1'
+
+    def _gradx_plane(self, k):
+        g = np.zeros((self.nx, self.ny))
+        g[1:-1] = (self.phi[2:, :, k] - self.phi[:-2, :, k]) / (
+            self.x[2:] - self.x[:-2])[:, None]
+        return g
+
+    def _gx_upper_local(self):
+        """dphi/dx on the upper side of the sheet, extrapolated to z=0.
+
+        Bounded: node k0 is the upper side of the cut face k0-1 and |z[k0]|
+        is at most one cell, so the 2-point weight is |t| <= 1 and no
+        dz-dependent amplification enters (contrast the stock weight
+        w = |z2|/|z2-z1| > 1 on the two FAR planes).
+        """
+        k0 = self.k0
+        k1 = min(k0 + 1, self.nz - 1)
+        g0 = self._gradx_plane(k0)
+        if k1 == k0:
+            return g0
+        g1 = self._gradx_plane(k1)
+        dz = self.z[k1] - self.z[k0]
+        t = 0.0 if abs(dz) < 1e-14 else -float(self.z[k0]) / dz
+        t = min(max(t, -1.0), 1.0)
+        return g0 + t * (g1 - g0)
+
+    def sheet_jump(self):
+        """Potential jump the STORED field carries on the wing nodes.
+
+        phi[k0] - phi[k0-1] at the wing footprint, shape
+        (len(wing_ix), len(wing_jy)). Measured to equal the prescribed
+        doublet strength to 2% at every station and every nz -- this is
+        the exact quantity the decontamination uses, so it is read from
+        the field rather than re-derived from the closure mode.
+        """
+        k0 = self.k0
+        iu = np.asarray(self.wing_ix)
+        jy = np.asarray(self.wing_jy)
+        if k0 < 1 or iu.size == 0 or jy.size == 0:
+            return np.zeros((iu.size, jy.size))
+        return (self.phi[iu, :, k0] - self.phi[iu, :, k0 - 1])[:, jy]
+
+    def _jump_cell_loading(self):
+        """d(jump)/dx per wing chord cell, cell-integrated.
+
+        Faces are the averages of the nodal jump, with the two END faces
+        pinned to the physical sheet ends (no jump ahead of the LE, the
+        TE jump behind the TE). Then sum_i gamma_i dx_i = J_TE = Gamma by
+        construction, so CL = 2 int gamma dx ties to the model's own
+        circulation. A plain nodal finite difference loses the LE cell,
+        which on the stock 6-node chord carries 44% of Gamma (measured:
+        CL 0.0333 instead of 0.0483).
+        """
+        J = self.sheet_jump()
+        n = J.shape[0]
+        if n == 0:
+            return None
+        if n == 1:
+            return np.zeros_like(J)
+        Jf = np.empty((n + 1, J.shape[1]))
+        Jf[0] = 0.0
+        Jf[1:n] = 0.5 * (J[:-1] + J[1:])
+        Jf[n] = J[-1]
+        iu = np.asarray(self.wing_ix)
+        dxi = np.empty(n)
+        dxi[:-1] = np.diff(self.x[iu])
+        dxi[-1] = dxi[-2]
+        return (Jf[1:] - Jf[:-1]) / dxi[:, None]
+
+    def _apply_cpdecontam(self, cpu, cpl, cp_from_g=None):
+        """Replace the wing-footprint Cp by the decontaminated pair.
+
+        cp_from_g : callable gx -> Cp (None = TSD order, Cp = -2 gx).
+        Outside the wing footprint both fields keep the stock values, so
+        every other consumer sees an unchanged array.
+        """
+        k0 = self.k0
+        gj = self._jump_cell_loading()
+        if k0 < 1 or gj is None:
+            return cpu, cpl
+        gxu = self._gx_upper_local()
+        gxl = gxu.copy()
+        BI = np.ix_(np.asarray(self.wing_ix), np.asarray(self.wing_jy))
+        gxl[BI] = gxu[BI] - gj
+        if cp_from_g is None:
+            return -2 * gxu, -2 * gxl
+        return cp_from_g(gxu), cp_from_g(gxl)
+
     def loads(self):
         """Thin-wing loads: lift from Cp jump, drag from Cp on local slope.
 
@@ -1739,6 +1888,11 @@ class TSDSolver:
             return self._loads_ij()
         cpu = surf_cp(ku1, ku2)
         cpl = surf_cp(kl1, kl2)
+        if self.cp_decontam():
+            # A17: exact-jump split at the sheet (see _apply_cpdecontam).
+            # The non-planar path (_loads_ij) is deliberately NOT changed:
+            # it extrapolates per (i,j) to its own surface height.
+            cpu, cpl = self._apply_cpdecontam(cpu, cpl)
         CL = CD = 0.0
         for i in self.wing_ix:
             xc = self.xc[i] / self.chord
@@ -1798,6 +1952,9 @@ class TSDSolver:
             return self._loads_ij(cp_of_g=cp_of_g)
         cpu = cp_of_g(gxu)
         cpl = cp_of_g(gxl)
+        if self.cp_decontam():
+            # A17: exact-jump split at the sheet (see _apply_cpdecontam).
+            cpu, cpl = self._apply_cpdecontam(cpu, cpl, cp_from_g=cp_of_g)
         CL = CD = 0.0
         for i in self.wing_ix:
             xc = self.xc[i] / self.chord
