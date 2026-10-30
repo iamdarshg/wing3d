@@ -149,7 +149,12 @@ h ≈ 1.5e-6 m, `nSurfaceLayers 15–20`, finer surface mesh, ~2–3× cost.
 potential solver omits, and it decides whether any TSD-vs-OF comparison is
 meaningful.
 
-**Who**: agent A18 is executing X/Y on the VM.
+**Who**: agent A18 was KILLED 2026-10-30 after ~90 min of mesh trials that
+produced **zero layers** (every trial mesh was bit-identical to the inviscid
+one: 136,158 cells, min volume 2.1495911e-06) while snappy still printed
+`Layers added`. **Do not repeat the prism-layer loop**; use option A
+(refine instead of layer) or B (`hcf_wing` igrid_type=4 + `su2_to_of.py`).
+Full post-mortem: `cases/openfoam/transonic/VISCOUS_HANDOFF.md` §6.
 **Turbulence note**: at Re ≈ 6×10⁶ the real boundary layer is turbulent, so
 `laminar` is unphysical *even with a no-slip wall* — SA/SST is required, not
 optional.
