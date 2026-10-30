@@ -1,0 +1,7 @@
+# wing3d solver + validation harness
+# Python 3.12
+numpy>=1.26
+scipy>=1.11
+
+# diagnostics only (plots in tests3d/)
+matplotlib>=3.8

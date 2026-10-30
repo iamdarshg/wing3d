@@ -13,3 +13,7 @@ cases/openfoam/*/0/uniform
 .ruff_cache/
 .mypy_cache/
 *.log.orig
+
+# scratch: session logs/scripts (recipes are preserved under tools/)
+tmp_*
+!.gitignore

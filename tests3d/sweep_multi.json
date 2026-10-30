@@ -4,9 +4,9 @@
   "config": "WING3D_IMPRINT=ll WING3D_ENTROPY=1 WING3D_KUTTA=0 WING3D_BL=0",
   "protocol": "grid (80, 32, 32), epochs 8, span 1.6, alpha 1.25 deg",
   "caveat": "Unanchored geometries (naca2412/naca4412) report raw CL only -- no anchor exists.  Anchors grade against the NEW free-tip rhoCentralFoam values where they exist, else the 86k corpus with its known bias.",
-  "updated": "2026-10-29T19:41:50",
-  "n_points": 8,
-  "n_ok": 8
+  "updated": "2026-10-29T20:23:23",
+  "n_points": 12,
+  "n_ok": 12
  },
  "points": {
   "naca0012@M0.800": {
@@ -567,6 +567,293 @@
    "note": "",
    "ram_free_mb_at_start": 1009,
    "resolution": "campaign g80x32x32"
+  },
+  "naca4412@M1.000": {
+   "geo": "naca4412",
+   "M": 1.0,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.25115188713323094,
+   "CD": 0.005263183589229034,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.2691885349372632,
+     "nsup": 35504
+    },
+    {
+     "ep": 1,
+     "CL": 0.2552329532294144,
+     "nsup": 35027
+    },
+    {
+     "ep": 2,
+     "CL": 0.25271210531880844,
+     "nsup": 35870
+    },
+    {
+     "ep": 3,
+     "CL": 0.2521405905769912,
+     "nsup": 36534
+    },
+    {
+     "ep": 4,
+     "CL": 0.2513687539177458,
+     "nsup": 38338
+    },
+    {
+     "ep": 5,
+     "CL": 0.25135746028035477,
+     "nsup": 38995
+    },
+    {
+     "ep": 6,
+     "CL": 0.25124281515498414,
+     "nsup": 39571
+    },
+    {
+     "ep": 7,
+     "CL": 0.25115188713323094,
+     "nsup": 40391
+    }
+   ],
+   "cl_ep_last": 0.25115188713323094,
+   "cl_ep_drift": -0.018036647804032246,
+   "nsup_last": 40391,
+   "built_base": false,
+   "secs": 640.2256765365601,
+   "note": "",
+   "ram_free_mb_at_start": 1517,
+   "resolution": "campaign g80x32x32"
+  },
+  "rae2822@M0.800": {
+   "geo": "rae2822",
+   "M": 0.8,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.15031753051195598,
+   "CD": 0.000961816746803149,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.16707658177383822,
+     "nsup": 7
+    },
+    {
+     "ep": 1,
+     "CL": 0.15161731805984055,
+     "nsup": 26
+    },
+    {
+     "ep": 2,
+     "CL": 0.15110805409763017,
+     "nsup": 45
+    },
+    {
+     "ep": 3,
+     "CL": 0.15052476996384978,
+     "nsup": 57
+    },
+    {
+     "ep": 4,
+     "CL": 0.1503713548688574,
+     "nsup": 64
+    },
+    {
+     "ep": 5,
+     "CL": 0.15030417168393248,
+     "nsup": 69
+    },
+    {
+     "ep": 6,
+     "CL": 0.15032249800411263,
+     "nsup": 72
+    },
+    {
+     "ep": 7,
+     "CL": 0.15031753051195598,
+     "nsup": 74
+    }
+   ],
+   "cl_ep_last": 0.15031753051195598,
+   "cl_ep_drift": -0.016759051261882235,
+   "nsup_last": 74,
+   "built_base": true,
+   "secs": 638.4919641017914,
+   "note": "",
+   "ram_free_mb_at_start": 2577,
+   "resolution": "campaign g80x32x32",
+   "anchor": 0.2372339,
+   "anchor_src": "corpus_86k",
+   "anchor_note": "86k corpus value; the new free-tip anchors for this geometry were NOT collected, so this anchor carries the corpus bias (known 30-50% low for dfvlr) -- treat the error as indicative only",
+   "err_pct": -36.637415431792846,
+   "pass_band": null
+  },
+  "rae2822@M0.925": {
+   "geo": "rae2822",
+   "M": 0.925,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.15188852645607154,
+   "CD": 0.0007560193159078074,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.16906441230060645,
+     "nsup": 163
+    },
+    {
+     "ep": 1,
+     "CL": 0.15248912116562544,
+     "nsup": 274
+    },
+    {
+     "ep": 2,
+     "CL": 0.15168664426099274,
+     "nsup": 371
+    },
+    {
+     "ep": 3,
+     "CL": 0.1522566174634427,
+     "nsup": 355
+    },
+    {
+     "ep": 4,
+     "CL": 0.15138043703256018,
+     "nsup": 1021
+    },
+    {
+     "ep": 5,
+     "CL": 0.1526974933338833,
+     "nsup": 589
+    },
+    {
+     "ep": 6,
+     "CL": 0.1534013566808544,
+     "nsup": 459
+    },
+    {
+     "ep": 7,
+     "CL": 0.15188852645607154,
+     "nsup": 563
+    }
+   ],
+   "cl_ep_last": 0.15188852645607154,
+   "cl_ep_drift": -0.017175885844534916,
+   "nsup_last": 563,
+   "built_base": false,
+   "secs": 602.339362859726,
+   "note": "",
+   "ram_free_mb_at_start": 2088,
+   "resolution": "campaign g80x32x32",
+   "anchor": 0.277834,
+   "anchor_src": "corpus_86k",
+   "anchor_note": "86k corpus value; the new free-tip anchors for this geometry were NOT collected, so this anchor carries the corpus bias (known 30-50% low for dfvlr) -- treat the error as indicative only",
+   "err_pct": -45.33119544185681,
+   "pass_band": null
+  },
+  "rae2822@M1.000": {
+   "geo": "rae2822",
+   "M": 1.0,
+   "status": "ok",
+   "grid": "80x32x32",
+   "epochs": 8,
+   "span": 1.6,
+   "alpha_deg": 1.25,
+   "config": {
+    "imprint": "ll",
+    "entropy": "1",
+    "kutta": "0",
+    "bl": "0",
+    "free_k": false
+   },
+   "CL": 0.1590691572319775,
+   "CD": 0.001092175870928674,
+   "hist": [
+    {
+     "ep": 0,
+     "CL": 0.17041830975793107,
+     "nsup": 40825
+    },
+    {
+     "ep": 1,
+     "CL": 0.1607637399614716,
+     "nsup": 38296
+    },
+    {
+     "ep": 2,
+     "CL": 0.16260032050072085,
+     "nsup": 50960
+    },
+    {
+     "ep": 3,
+     "CL": 0.15935288684354995,
+     "nsup": 50767
+    },
+    {
+     "ep": 4,
+     "CL": 0.15966854817654216,
+     "nsup": 50779
+    },
+    {
+     "ep": 5,
+     "CL": 0.1593807430096341,
+     "nsup": 50783
+    },
+    {
+     "ep": 6,
+     "CL": 0.1592462155794571,
+     "nsup": 50761
+    },
+    {
+     "ep": 7,
+     "CL": 0.1590691572319775,
+     "nsup": 50692
+    }
+   ],
+   "cl_ep_last": 0.1590691572319775,
+   "cl_ep_drift": -0.01134915252595356,
+   "nsup_last": 50692,
+   "built_base": false,
+   "secs": 611.0220766067505,
+   "note": "",
+   "ram_free_mb_at_start": 1321,
+   "resolution": "campaign g80x32x32",
+   "anchor": 0.1885693,
+   "anchor_src": "corpus_86k",
+   "anchor_note": "86k corpus value; the new free-tip anchors for this geometry were NOT collected, so this anchor carries the corpus bias (known 30-50% low for dfvlr) -- treat the error as indicative only",
+   "err_pct": -15.644191693993925,
+   "pass_band": null
   }
  }
 }
