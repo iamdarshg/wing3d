@@ -1,0 +1,8 @@
+FoamFile { version 2.0; format ascii; class volScalarField; object nut; }
+dimensions [0 2 -1 0 0 0 0];
+internalField uniform 5.993094224391581e-05;
+boundaryField {
+ farfield { type calculated; value uniform 5.993094224391581e-05; }
+ rootSym { type symmetry; }
+ "m6wing.stl" { type fixedValue; value uniform 0; }
+}
